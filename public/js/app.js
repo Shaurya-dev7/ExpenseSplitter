@@ -1,5 +1,6 @@
 /**
- * SplitFair — Phone-First Single Page Application (SPA).
+ * SplitFair — Core Orchestrator & Router (Walkthrough-Ready).
+ * Manages state, routing, live polling, offline detection, and global notifications.
  * Pure Vanilla JavaScript (ES2020+). Zero Frameworks.
  */
 
@@ -20,7 +21,9 @@
     currentTab: "expenses",
     activeSplitType: "equal",
     pollingInterval: null,
+    isFetching: false,
     isModalOpen: false,
+    isOffline: !navigator.onLine,
     pendingPayment: null,
   };
 
@@ -28,6 +31,7 @@
   // DOM Elements Cache
   // =========================================================================
   const el = {
+    offlineBanner: document.getElementById("offline-banner"),
     brandLink: document.getElementById("brand-link"),
     headerActions: document.getElementById("header-actions"),
     btnShareLink: document.getElementById("btn-share-link"),
@@ -61,48 +65,16 @@
     groupMemberCount: document.getElementById("group-member-count"),
     membersChipList: document.getElementById("members-chip-list"),
     btnOpenAddMember: document.getElementById("btn-open-add-member"),
+    btnOpenAddExpense: document.getElementById("btn-open-add-expense"),
 
     // Tabs & Panels
     tabBtnExpenses: document.getElementById("tab-btn-expenses"),
     tabBtnBalances: document.getElementById("tab-btn-balances"),
     tabBtnSettlements: document.getElementById("tab-btn-settlements"),
-    tabBadgeExpenses: document.getElementById("tab-badge-expenses"),
-    tabBadgeBalances: document.getElementById("tab-badge-balances"),
-    tabBadgeSettlements: document.getElementById("tab-badge-settlements"),
 
     panelExpenses: document.getElementById("panel-expenses"),
     panelBalances: document.getElementById("panel-balances"),
     panelSettlements: document.getElementById("panel-settlements"),
-
-    // Expenses Panel
-    totalGroupSpend: document.getElementById("total-group-spend"),
-    btnOpenAddExpense: document.getElementById("btn-open-add-expense"),
-    expensesList: document.getElementById("expenses-list"),
-
-    // Balances Panel
-    balancesList: document.getElementById("balances-list"),
-    balanceChecksumBadge: document.getElementById("balance-checksum-badge"),
-
-    // Settlements Panel
-    settlementsList: document.getElementById("settlements-list"),
-
-    // Add Expense Modal
-    modalExpense: document.getElementById("modal-expense"),
-    btnCloseExpenseModal: document.getElementById("btn-close-expense-modal"),
-    btnCancelExpense: document.getElementById("btn-cancel-expense"),
-    formAddExpense: document.getElementById("form-add-expense"),
-    inputExpenseDesc: document.getElementById("input-expense-desc"),
-    inputExpenseAmount: document.getElementById("input-expense-amount"),
-    selectExpensePayer: document.getElementById("select-expense-payer"),
-    errorExpenseDesc: document.getElementById("error-expense-desc"),
-    errorExpenseAmount: document.getElementById("error-expense-amount"),
-    errorExpensePayer: document.getElementById("error-expense-payer"),
-    segmentBtns: document.querySelectorAll(".segment-btn"),
-    splitParticipantsContainer: document.getElementById("split-participants-container"),
-    btnToggleAllParticipants: document.getElementById("btn-toggle-all-participants"),
-    previewStatusPill: document.getElementById("preview-status-pill"),
-    previewBreakdownList: document.getElementById("preview-breakdown-list"),
-    btnSaveExpense: document.getElementById("btn-save-expense"),
 
     // Add Member Modal
     modalMember: document.getElementById("modal-member"),
@@ -113,31 +85,26 @@
     errorNewMember: document.getElementById("error-new-member"),
     btnSaveMember: document.getElementById("btn-save-member"),
 
-    // Payment Confirm Modal
-    modalPayment: document.getElementById("modal-payment"),
-    btnClosePaymentModal: document.getElementById("btn-close-payment-modal"),
-    btnCancelPayment: document.getElementById("btn-cancel-payment"),
-    paymentFromName: document.getElementById("payment-from-name"),
-    paymentToName: document.getElementById("payment-to-name"),
-    paymentAmountDisplay: document.getElementById("payment-amount-display"),
-    btnConfirmPayment: document.getElementById("btn-confirm-payment"),
-
     // Toast Container
     toastContainer: document.getElementById("toast-container"),
   };
 
   // =========================================================================
-  // Toast Notifications
+  // Toast Notifications & Helpers
   // =========================================================================
   function showToast(message, type = "info", duration = 3000) {
     const toast = document.createElement("div");
     toast.className = `toast toast-${type}`;
+    toast.setAttribute("role", "status");
+    toast.setAttribute("aria-live", "polite");
 
     let icon = "ℹ️";
     if (type === "success") icon = "✅";
     if (type === "error") icon = "⚠️";
+    if (type === "warning") icon = "🔔";
 
     const iconSpan = document.createElement("span");
+    iconSpan.setAttribute("aria-hidden", "true");
     iconSpan.textContent = icon;
 
     const textSpan = document.createElement("span");
@@ -152,6 +119,67 @@
       toast.addEventListener("animationend", () => toast.remove());
     }, duration);
   }
+
+  function copyToClipboard(text, { successMsg = "Copied to clipboard!", fallbackPrompt = "Copy to clipboard:" } = {}) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard
+        .writeText(text)
+        .then(() => showToast(successMsg, "success"))
+        .catch(() => legacyCopy(text, fallbackPrompt));
+    } else {
+      legacyCopy(text, fallbackPrompt);
+    }
+  }
+
+  function legacyCopy(text, fallbackPrompt) {
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const successful = document.execCommand("copy");
+      document.body.removeChild(textarea);
+      if (successful) {
+        showToast("Copied to clipboard!", "success");
+      } else {
+        window.prompt(fallbackPrompt, text);
+      }
+    } catch {
+      window.prompt(fallbackPrompt, text);
+    }
+  }
+
+  function setBtnLoading(btn, isLoading) {
+    btn.disabled = isLoading;
+    const text = btn.querySelector(".btn-text");
+    const spinner = btn.querySelector(".btn-spinner");
+    if (text) text.classList.toggle("hidden", isLoading);
+    if (spinner) spinner.classList.toggle("hidden", !isLoading);
+  }
+
+  // =========================================================================
+  // Online / Offline State Management
+  // =========================================================================
+  function updateOnlineStatus() {
+    state.isOffline = !navigator.onLine;
+    if (el.offlineBanner) {
+      el.offlineBanner.classList.toggle("hidden", !state.isOffline);
+    }
+    if (state.isOffline) {
+      showToast("You are currently offline. Changes cannot be saved.", "warning");
+    } else {
+      showToast("Back online! Resuming sync.", "info");
+      if (state.currentGroupId) {
+        loadGroupData(state.currentGroupId, { isBackgroundSync: true });
+      }
+    }
+  }
+
+  window.addEventListener("online", updateOnlineStatus);
+  window.addEventListener("offline", updateOnlineStatus);
 
   // =========================================================================
   // LocalStorage History
@@ -175,11 +203,11 @@
         name: group.name,
         date: new Date().toLocaleDateString("en-IN", { month: "short", day: "numeric" }),
       });
-      list = list.slice(0, 5); // Keep top 5
+      list = list.slice(0, 5);
       localStorage.setItem(RECENT_KEY, JSON.stringify(list));
       renderRecentGroups();
     } catch {
-      // Storage quota or disabled
+      // ignore
     }
   }
 
@@ -213,14 +241,26 @@
   }
 
   // =========================================================================
-  // SPA Routing
+  // Router Logic (Hash, Query Param, or Direct ID)
   // =========================================================================
   function getRoute() {
+    // 1. Check query parameter ?group=xxx
+    const urlParams = new URLSearchParams(window.location.search);
+    const queryGid = urlParams.get("group");
+    if (queryGid && /^[A-Za-z0-9_-]{10,}$/.test(queryGid.trim())) {
+      // Canonicalize to hash
+      window.location.search = "";
+      window.location.hash = `#/groups/${queryGid.trim()}`;
+      return { view: "group", gid: queryGid.trim() };
+    }
+
+    // 2. Check hash #/groups/:gid
     const hash = window.location.hash || "#/";
     const groupMatch = hash.match(/^#\/groups\/([A-Za-z0-9_-]+)/);
     if (groupMatch) {
       return { view: "group", gid: groupMatch[1] };
     }
+
     return { view: "home" };
   }
 
@@ -246,23 +286,17 @@
   }
 
   window.addEventListener("hashchange", handleRoute);
-  window.addEventListener("DOMContentLoaded", () => {
-    initHomeView();
-    initGroupView();
-    initModals();
-    handleRoute();
-  });
 
   // =========================================================================
-  // Polling Engine (5-Second Sync)
+  // Polling Engine (4-Second Safe Sync)
   // =========================================================================
   function startPolling() {
     stopPolling();
     state.pollingInterval = setInterval(() => {
-      if (state.currentGroupId && !state.isModalOpen) {
+      if (state.currentGroupId && !state.isModalOpen && !state.isOffline && !state.isFetching) {
         loadGroupData(state.currentGroupId, { isBackgroundSync: true });
       }
-    }, 5000);
+    }, 4000);
   }
 
   function stopPolling() {
@@ -276,13 +310,15 @@
   // Data Loading & Syncing
   // =========================================================================
   async function loadGroupData(gid, { isInitial = false, isBackgroundSync = false } = {}) {
+    if (state.isFetching) return;
+    state.isFetching = true;
+
     try {
       if (isInitial) {
         el.groupTitle.textContent = "Loading group...";
-        el.expensesList.innerHTML = `<div class="empty-state"><span class="empty-icon">⏳</span><p class="empty-title">Loading expenses...</p></div>`;
       }
 
-      // Parallel fetching for ultra-fast sync
+      // Parallel fetch of group, expenses, balances, and settlements
       const [group, expenses, balancesRes, settlementsRes] = await Promise.all([
         API.getGroup(gid),
         API.listExpenses(gid),
@@ -297,14 +333,12 @@
       state.balances = (balancesRes && balancesRes.balances) || [];
       state.settlements = (settlementsRes && settlementsRes.transfers) || [];
 
-      // Save to recent groups in background
       saveRecentGroup(group);
 
-      // Render updated UI
       renderGroupHeader();
-      renderExpensesTab();
-      renderBalancesTab();
-      renderSettlementsTab();
+      window.ExpensesModule.renderExpenses();
+      window.BalancesModule.renderBalances();
+      window.SettlementsModule.renderSettlements();
     } catch (err) {
       if (err.status === 404) {
         showToast("Group not found. Redirecting to home.", "error");
@@ -312,11 +346,13 @@
       } else if (!isBackgroundSync) {
         showToast(err.message || "Failed to load group data", "error");
       }
+    } finally {
+      state.isFetching = false;
     }
   }
 
   // =========================================================================
-  // Screen 1: Home View Logic
+  // Home View Logic
   // =========================================================================
   function initHomeView() {
     renderMemberInputRows(["", ""]);
@@ -337,7 +373,12 @@
 
     el.formCreateGroup.addEventListener("submit", async (e) => {
       e.preventDefault();
-      clearErrors();
+      clearHomeErrors();
+
+      if (state.isOffline) {
+        showToast("Cannot create group while offline", "error");
+        return;
+      }
 
       const name = el.inputGroupName.value.trim();
       const members = getMemberInputs();
@@ -346,6 +387,9 @@
       if (!name) {
         el.errorGroupName.textContent = "Group name is required";
         hasError = true;
+      } else if (name.length > 60) {
+        el.errorGroupName.textContent = "Group name cannot exceed 60 characters";
+        hasError = true;
       }
 
       if (members.length < 2) {
@@ -353,9 +397,13 @@
         hasError = true;
       }
 
-      // Duplicate check (case-insensitive)
       const seen = new Set();
       for (const m of members) {
+        if (m.length > 40) {
+          el.errorMembers.textContent = `Member name '${m}' exceeds 40 characters limit`;
+          hasError = true;
+          break;
+        }
         const lower = m.toLowerCase();
         if (seen.has(lower)) {
           el.errorMembers.textContent = `Duplicate member name '${m}' is not allowed`;
@@ -372,13 +420,8 @@
         const group = await API.createGroup({ name, members });
         showToast("Group created! Opening...", "success");
 
-        // Copy link to clipboard
         const shareUrl = `${window.location.origin}${window.location.pathname}#/groups/${group.id}`;
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(shareUrl).then(() => {
-            showToast("Shareable link copied to clipboard!", "success");
-          }).catch(() => {});
-        }
+        copyToClipboard(shareUrl, { successMsg: "Group link copied to clipboard!" });
 
         window.location.hash = `#/groups/${group.id}`;
       } catch (err) {
@@ -402,11 +445,20 @@
         return;
       }
 
-      // Extract ID from full URL if pasted
+      // Check URL match or query param or raw ID
       let gid = val;
-      const match = val.match(/#\/groups\/([A-Za-z0-9_-]+)/);
-      if (match) {
-        gid = match[1];
+      const hashMatch = val.match(/#\/groups\/([A-Za-z0-9_-]+)/);
+      const queryMatch = val.match(/[?&]group=([A-Za-z0-9_-]+)/);
+
+      if (hashMatch) {
+        gid = hashMatch[1];
+      } else if (queryMatch) {
+        gid = queryMatch[1];
+      }
+
+      if (!/^[A-Za-z0-9_-]{10,}$/.test(gid)) {
+        el.errorJoin.textContent = "Invalid group ID or link format (must be at least 10 URL-safe characters)";
+        return;
       }
 
       window.location.hash = `#/groups/${encodeURIComponent(gid)}`;
@@ -433,11 +485,13 @@
 
       const input = document.createElement("input");
       input.type = "text";
+      input.id = `input-member-${idx + 1}`;
       input.className = "form-input member-name-input";
       input.placeholder = `Member ${idx + 1} name`;
       input.value = val;
-      input.maxLength = 50;
+      input.maxLength = 40;
       input.autocomplete = "off";
+      input.setAttribute("aria-label", `Member ${idx + 1} name`);
 
       row.appendChild(idxBadge);
       row.appendChild(input);
@@ -448,6 +502,7 @@
         btnRemove.className = "btn-remove-member";
         btnRemove.innerHTML = "&times;";
         btnRemove.title = "Remove member";
+        btnRemove.setAttribute("aria-label", `Remove member ${idx + 1}`);
         btnRemove.addEventListener("click", () => {
           const updated = getMemberInputs();
           updated.splice(idx, 1);
@@ -463,36 +518,42 @@
     el.btnAddMemberField.disabled = values.length >= 20;
   }
 
-  function clearErrors() {
+  function clearHomeErrors() {
     el.errorGroupName.textContent = "";
     el.errorMembers.textContent = "";
     el.errorJoin.textContent = "";
   }
 
   // =========================================================================
-  // Screen 2: Group View Logic
+  // Group View Header & Controls
   // =========================================================================
   function initGroupView() {
-    // Back to Home
     el.btnBackHome.addEventListener("click", () => {
       window.location.hash = "#/";
     });
 
-    // Share link
+    // Share Group Link: navigator.share with fallback
     el.btnShareLink.addEventListener("click", () => {
       const url = window.location.href;
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(url).then(() => {
-          showToast("Group link copied to clipboard!", "success");
-        }).catch(() => {
-          prompt("Copy this shareable link:", url);
+      const title = (state.group && state.group.name) || "SplitFair Expense Group";
+      const shareData = {
+        title: `Join ${title} on SplitFair`,
+        text: `View and split expenses with our group on SplitFair:`,
+        url,
+      };
+
+      if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+        navigator.share(shareData).catch((err) => {
+          if (err.name !== "AbortError") {
+            copyToClipboard(url, { successMsg: "Group link copied to clipboard!" });
+          }
         });
       } else {
-        prompt("Copy this shareable link:", url);
+        copyToClipboard(url, { successMsg: "Group link copied to clipboard!" });
       }
     });
 
-    // Share via WhatsApp
+    // Share via WhatsApp direct
     el.btnShareWhatsapp.addEventListener("click", () => {
       if (!state.group) return;
       const text = `Join our expense group '${state.group.name}' on SplitFair:\n${window.location.href}`;
@@ -502,10 +563,8 @@
 
     // Group ID badge click to copy
     el.groupIdBadge.addEventListener("click", () => {
-      if (state.currentGroupId && navigator.clipboard) {
-        navigator.clipboard.writeText(state.currentGroupId).then(() => {
-          showToast(`Group ID copied: ${state.currentGroupId}`, "info");
-        });
+      if (state.currentGroupId) {
+        copyToClipboard(state.currentGroupId, { successMsg: `Group ID copied: ${state.currentGroupId}` });
       }
     });
 
@@ -540,19 +599,34 @@
 
     // Open Add Expense
     el.btnOpenAddExpense.addEventListener("click", () => {
-      openExpenseModal();
+      window.ExpensesModule.openModal();
+    });
+
+    // Add Member Modal Bindings
+    el.btnCloseMemberModal.addEventListener("click", closeMemberModal);
+    el.btnCancelMember.addEventListener("click", closeMemberModal);
+    el.modalMember.addEventListener("click", (e) => {
+      if (e.target === el.modalMember) closeMemberModal();
+    });
+    el.formAddMember.addEventListener("submit", handleSaveMember);
+
+    // Global Keyboard: Escape key closes open modals
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && state.isModalOpen) {
+        window.ExpensesModule.closeModal();
+        closeMemberModal();
+        window.SettlementsModule.closePaymentModal();
+      }
     });
   }
 
   function renderGroupHeader() {
     if (!state.group) return;
 
-    // Safe assignment using textContent
     el.groupTitle.textContent = state.group.name;
     el.groupIdBadge.textContent = state.group.id;
     el.groupMemberCount.textContent = `${state.members.length} members`;
 
-    // Member Chips
     el.membersChipList.innerHTML = "";
     state.members.forEach((m) => {
       const chip = document.createElement("div");
@@ -568,640 +642,6 @@
       chip.appendChild(nameText);
       el.membersChipList.appendChild(chip);
     });
-
-    // Update tab badges
-    el.tabBadgeExpenses.textContent = String(state.expenses.length);
-    el.tabBadgeBalances.textContent = String(state.members.length);
-    el.tabBadgeSettlements.textContent = String(state.settlements.length);
-  }
-
-  // =========================================================================
-  // Tab 1: Expenses Panel
-  // =========================================================================
-  function renderExpensesTab() {
-    // Total spend
-    const totalSpendPaise = state.expenses.reduce((acc, exp) => acc + exp.amount, 0);
-    el.totalGroupSpend.textContent = MoneyUtils.formatPaiseToRupees(totalSpendPaise);
-
-    el.expensesList.innerHTML = "";
-
-    if (state.expenses.length === 0) {
-      el.expensesList.innerHTML = `
-        <div class="empty-state">
-          <span class="empty-icon">🧾</span>
-          <p class="empty-title">No expenses yet</p>
-          <p class="empty-desc">Tap '+ Add Expense' to record the first shared bill.</p>
-        </div>
-      `;
-      return;
-    }
-
-    state.expenses.forEach((expense) => {
-      const card = document.createElement("div");
-      card.className = "expense-card";
-
-      // Top row
-      const topRow = document.createElement("div");
-      topRow.className = "expense-card-top";
-
-      const mainInfo = document.createElement("div");
-      mainInfo.className = "expense-main-info";
-
-      const title = document.createElement("h4");
-      title.className = "expense-title";
-      title.textContent = expense.description;
-
-      const meta = document.createElement("div");
-      meta.className = "expense-meta";
-
-      const payerName = (state.membersMap.get(expense.paidBy) || {}).name || `Member #${expense.paidBy}`;
-      const payerSpan = document.createElement("span");
-      payerSpan.textContent = `Paid by ${payerName}`;
-
-      const dateSpan = document.createElement("span");
-      dateSpan.textContent = `• ${new Date(expense.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
-
-      meta.appendChild(payerSpan);
-      meta.appendChild(dateSpan);
-      mainInfo.appendChild(title);
-      mainInfo.appendChild(meta);
-
-      const amtBox = document.createElement("div");
-      amtBox.className = "expense-amount-box";
-
-      const amt = document.createElement("div");
-      amt.className = "expense-amount";
-      amt.textContent = MoneyUtils.formatPaiseToRupees(expense.amount);
-
-      amtBox.appendChild(amt);
-      topRow.appendChild(mainInfo);
-      topRow.appendChild(amtBox);
-      card.appendChild(topRow);
-
-      // Splits details breakdown
-      if (expense.splits && typeof expense.splits === "object") {
-        const splitsBox = document.createElement("div");
-        splitsBox.className = "expense-splits-detail";
-
-        const splitKeys = Object.keys(expense.splits).map(Number).sort((a, b) => a - b);
-        splitKeys.forEach((mId) => {
-          const mName = (state.membersMap.get(mId) || {}).name || `#${mId}`;
-          const sharePaise = expense.splits[String(mId)] || 0;
-
-          const pill = document.createElement("span");
-          pill.className = "split-pill";
-          pill.textContent = `${mName}: ${MoneyUtils.formatPaiseToRupees(sharePaise)}`;
-          splitsBox.appendChild(pill);
-        });
-
-        card.appendChild(splitsBox);
-      }
-
-      // Actions (Delete button)
-      const actions = document.createElement("div");
-      actions.className = "expense-actions";
-
-      const btnDelete = document.createElement("button");
-      btnDelete.className = "btn btn-danger-outline btn-sm";
-      btnDelete.textContent = "Delete";
-      btnDelete.addEventListener("click", () => confirmDeleteExpense(expense));
-
-      actions.appendChild(btnDelete);
-      card.appendChild(actions);
-
-      el.expensesList.appendChild(card);
-    });
-  }
-
-  async function confirmDeleteExpense(expense) {
-    const ok = window.confirm(`Delete expense "${expense.description}" of ${MoneyUtils.formatPaiseToRupees(expense.amount)}?\nThis will recalculate all group balances.`);
-    if (!ok) return;
-
-    try {
-      await API.deleteExpense(state.currentGroupId, expense.id);
-      showToast("Expense deleted", "success");
-      await loadGroupData(state.currentGroupId);
-    } catch (err) {
-      showToast(err.message || "Failed to delete expense", "error");
-    }
-  }
-
-  // =========================================================================
-  // Tab 2: Balances Panel
-  // =========================================================================
-  function renderBalancesTab() {
-    el.balancesList.innerHTML = "";
-
-    if (state.balances.length === 0) {
-      el.balancesList.innerHTML = `
-        <div class="empty-state">
-          <span class="empty-icon">⚖️</span>
-          <p class="empty-title">No balances to display</p>
-          <p class="empty-desc">Add members and expenses to view net balances.</p>
-        </div>
-      `;
-      return;
-    }
-
-    // Verify net balance checksum sum === 0
-    const sumBalances = state.balances.reduce((acc, b) => acc + b.balance, 0);
-    if (sumBalances === 0) {
-      el.balanceChecksumBadge.className = "badge badge-success";
-      el.balanceChecksumBadge.textContent = "Balanced (Σ = ₹0.00)";
-    } else {
-      el.balanceChecksumBadge.className = "badge badge-danger";
-      el.balanceChecksumBadge.textContent = `Imbalanced (Σ = ${MoneyUtils.formatPaiseToRupees(sumBalances)})`;
-    }
-
-    state.balances.forEach((b) => {
-      const card = document.createElement("div");
-      card.className = "balance-card";
-
-      // Member Avatar & Name
-      const memberInfo = document.createElement("div");
-      memberInfo.className = "balance-member-info";
-
-      const avatar = document.createElement("div");
-      avatar.className = "balance-member-avatar";
-      avatar.textContent = b.name.charAt(0).toUpperCase();
-
-      const textWrap = document.createElement("div");
-      const name = document.createElement("div");
-      name.className = "balance-member-name";
-      name.textContent = b.name;
-
-      const sub = document.createElement("div");
-      sub.className = "balance-member-sub";
-      sub.textContent = `Member #${b.memberId}`;
-
-      textWrap.appendChild(name);
-      textWrap.appendChild(sub);
-      memberInfo.appendChild(avatar);
-      memberInfo.appendChild(textWrap);
-
-      // Amount & Status
-      const valBox = document.createElement("div");
-      valBox.className = "balance-val-box";
-
-      const amount = document.createElement("div");
-      const status = document.createElement("div");
-
-      if (b.balance > 0) {
-        amount.className = "balance-val-amount positive";
-        amount.textContent = `+${MoneyUtils.formatPaiseToRupees(b.balance)}`;
-        status.className = "balance-status-text positive";
-        status.textContent = "gets back";
-      } else if (b.balance < 0) {
-        amount.className = "balance-val-amount negative";
-        amount.textContent = `-${MoneyUtils.formatPaiseToRupees(Math.abs(b.balance))}`;
-        status.className = "balance-status-text negative";
-        status.textContent = "owes";
-      } else {
-        amount.className = "balance-val-amount neutral";
-        amount.textContent = MoneyUtils.formatPaiseToRupees(0);
-        status.className = "balance-status-text neutral";
-        status.textContent = "settled up";
-      }
-
-      valBox.appendChild(amount);
-      valBox.appendChild(status);
-
-      card.appendChild(memberInfo);
-      card.appendChild(valBox);
-
-      el.balancesList.appendChild(card);
-    });
-  }
-
-  // =========================================================================
-  // Tab 3: Settle Up Panel (Fewest Payments)
-  // =========================================================================
-  function renderSettlementsTab() {
-    el.settlementsList.innerHTML = "";
-
-    if (state.settlements.length === 0) {
-      el.settlementsList.innerHTML = `
-        <div class="empty-state">
-          <span class="empty-icon">🎉</span>
-          <p class="empty-title">All settled up!</p>
-          <p class="empty-desc">No outstanding balances. Everyone has paid their fair share.</p>
-        </div>
-      `;
-      return;
-    }
-
-    state.settlements.forEach((transfer) => {
-      const fromMember = state.membersMap.get(transfer.from) || { name: `Member #${transfer.from}` };
-      const toMember = state.membersMap.get(transfer.to) || { name: `Member #${transfer.to}` };
-
-      const card = document.createElement("div");
-      card.className = "settlement-card";
-
-      // Header row: From -> To and Amount
-      const header = document.createElement("div");
-      header.className = "settlement-card-header";
-
-      const route = document.createElement("div");
-      route.className = "settlement-route";
-
-      const fromName = document.createElement("span");
-      fromName.className = "name-pill from-pill";
-      fromName.textContent = fromMember.name;
-
-      const arrow = document.createElement("span");
-      arrow.className = "settlement-arrow";
-      arrow.textContent = "➔";
-
-      const toName = document.createElement("span");
-      toName.className = "name-pill to-pill";
-      toName.textContent = toMember.name;
-
-      route.appendChild(fromName);
-      route.appendChild(arrow);
-      route.appendChild(toName);
-
-      const amt = document.createElement("div");
-      amt.className = "settlement-amount";
-      amt.textContent = MoneyUtils.formatPaiseToRupees(transfer.amount);
-
-      header.appendChild(route);
-      header.appendChild(amt);
-      card.appendChild(header);
-
-      // Actions: Mark as Paid & WhatsApp Reminder
-      const actions = document.createElement("div");
-      actions.className = "settlement-actions";
-
-      const btnPay = document.createElement("button");
-      btnPay.className = "btn btn-success btn-md";
-      btnPay.innerHTML = `<span>✓</span> Mark as Paid`;
-      btnPay.addEventListener("click", () => openPaymentConfirmModal(transfer, fromMember, toMember));
-
-      const btnRemind = document.createElement("button");
-      btnRemind.className = "btn btn-whatsapp btn-md";
-      btnRemind.innerHTML = `<span>💬</span> Remind`;
-      btnRemind.addEventListener("click", () => sendWhatsAppReminder(transfer, fromMember, toMember));
-
-      actions.appendChild(btnPay);
-      actions.appendChild(btnRemind);
-      card.appendChild(actions);
-
-      el.settlementsList.appendChild(card);
-    });
-  }
-
-  function sendWhatsAppReminder(transfer, fromMember, toMember) {
-    const formattedAmt = MoneyUtils.formatPaiseToRupees(transfer.amount);
-    const text = `Hi ${fromMember.name}! 👋\nPlease settle ${formattedAmt} with ${toMember.name} for group '${state.group.name}'.\nView details: ${window.location.href}`;
-    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
-    window.open(url, "_blank");
-  }
-
-  // =========================================================================
-  // Modals & Bottom Sheets Logic
-  // =========================================================================
-  function initModals() {
-    // Expense Modal Close Handlers
-    el.btnCloseExpenseModal.addEventListener("click", closeExpenseModal);
-    el.btnCancelExpense.addEventListener("click", closeExpenseModal);
-    el.modalExpense.addEventListener("click", (e) => {
-      if (e.target === el.modalExpense) closeExpenseModal();
-    });
-
-    // Member Modal Close Handlers
-    el.btnCloseMemberModal.addEventListener("click", closeMemberModal);
-    el.btnCancelMember.addEventListener("click", closeMemberModal);
-    el.modalMember.addEventListener("click", (e) => {
-      if (e.target === el.modalMember) closeMemberModal();
-    });
-
-    // Payment Modal Close Handlers
-    el.btnClosePaymentModal.addEventListener("click", closePaymentModal);
-    el.btnCancelPayment.addEventListener("click", closePaymentModal);
-    el.modalPayment.addEventListener("click", (e) => {
-      if (e.target === el.modalPayment) closePaymentModal();
-    });
-
-    // Split Segment Controls
-    el.segmentBtns.forEach((btn) => {
-      btn.addEventListener("click", () => {
-        el.segmentBtns.forEach((b) => {
-          b.classList.remove("active");
-          b.setAttribute("aria-checked", "false");
-        });
-        btn.classList.add("active");
-        btn.setAttribute("aria-checked", "true");
-        state.activeSplitType = btn.dataset.type;
-        renderSplitConfiguration();
-        updateLivePreview();
-      });
-    });
-
-    // Toggle All Participants Button
-    el.btnToggleAllParticipants.addEventListener("click", () => {
-      if (state.activeSplitType === "equal") {
-        const checkboxes = el.splitParticipantsContainer.querySelectorAll("input[type='checkbox']");
-        const allChecked = Array.from(checkboxes).every((cb) => cb.checked);
-        checkboxes.forEach((cb) => (cb.checked = !allChecked));
-        el.btnToggleAllParticipants.textContent = allChecked ? "Select All" : "Deselect All";
-        updateLivePreview();
-      }
-    });
-
-    // Amount & Description Input Listeners for Instant Live Preview
-    el.inputExpenseAmount.addEventListener("input", updateLivePreview);
-    el.selectExpensePayer.addEventListener("change", updateLivePreview);
-
-    // Add Expense Form Submit
-    el.formAddExpense.addEventListener("submit", handleSaveExpense);
-
-    // Add Member Form Submit
-    el.formAddMember.addEventListener("submit", handleSaveMember);
-
-    // Confirm Payment Submit
-    el.btnConfirmPayment.addEventListener("click", handleConfirmPayment);
-  }
-
-  // --- ADD EXPENSE MODAL ---
-  function openExpenseModal() {
-    state.isModalOpen = true;
-    el.formAddExpense.reset();
-    el.errorExpenseDesc.textContent = "";
-    el.errorExpenseAmount.textContent = "";
-    el.errorExpensePayer.textContent = "";
-
-    // Reset split type to equal
-    state.activeSplitType = "equal";
-    el.segmentBtns.forEach((b) => {
-      const isEq = b.dataset.type === "equal";
-      b.classList.toggle("active", isEq);
-      b.setAttribute("aria-checked", String(isEq));
-    });
-
-    // Populate Paid By dropdown
-    el.selectExpensePayer.innerHTML = "";
-    state.members.forEach((m) => {
-      const opt = document.createElement("option");
-      opt.value = String(m.id);
-      opt.textContent = `${m.name} (#${m.id})`;
-      el.selectExpensePayer.appendChild(opt);
-    });
-
-    renderSplitConfiguration();
-    updateLivePreview();
-
-    el.modalExpense.classList.remove("hidden");
-    el.modalExpense.setAttribute("aria-hidden", "false");
-    el.inputExpenseDesc.focus();
-  }
-
-  function closeExpenseModal() {
-    state.isModalOpen = false;
-    el.modalExpense.classList.add("hidden");
-    el.modalExpense.setAttribute("aria-hidden", "true");
-  }
-
-  function renderSplitConfiguration() {
-    el.splitParticipantsContainer.innerHTML = "";
-
-    if (state.activeSplitType === "equal") {
-      el.btnToggleAllParticipants.classList.remove("hidden");
-      el.btnToggleAllParticipants.textContent = "Deselect All";
-
-      state.members.forEach((m) => {
-        const row = document.createElement("div");
-        row.className = "split-participant-row";
-
-        const label = document.createElement("label");
-        label.className = "split-participant-label";
-
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.checked = true;
-        cb.value = String(m.id);
-        cb.addEventListener("change", () => {
-          const checkboxes = el.splitParticipantsContainer.querySelectorAll("input[type='checkbox']");
-          const allChecked = Array.from(checkboxes).every((c) => c.checked);
-          el.btnToggleAllParticipants.textContent = allChecked ? "Deselect All" : "Select All";
-          updateLivePreview();
-        });
-
-        const nameSpan = document.createElement("span");
-        nameSpan.textContent = `${m.name} (#${m.id})`;
-
-        label.appendChild(cb);
-        label.appendChild(nameSpan);
-        row.appendChild(label);
-        el.splitParticipantsContainer.appendChild(row);
-      });
-    } else if (state.activeSplitType === "shares") {
-      el.btnToggleAllParticipants.classList.add("hidden");
-
-      state.members.forEach((m) => {
-        const row = document.createElement("div");
-        row.className = "split-participant-row";
-
-        const nameSpan = document.createElement("span");
-        nameSpan.className = "split-participant-label";
-        nameSpan.textContent = `${m.name} (#${m.id})`;
-
-        const input = document.createElement("input");
-        input.type = "number";
-        input.className = "split-input-field share-input";
-        input.min = "1";
-        input.max = "1000";
-        input.value = "1";
-        input.dataset.memberId = String(m.id);
-        input.addEventListener("input", updateLivePreview);
-
-        row.appendChild(nameSpan);
-        row.appendChild(input);
-        el.splitParticipantsContainer.appendChild(row);
-      });
-    } else if (state.activeSplitType === "exact") {
-      el.btnToggleAllParticipants.classList.add("hidden");
-
-      state.members.forEach((m) => {
-        const row = document.createElement("div");
-        row.className = "split-participant-row";
-
-        const nameSpan = document.createElement("span");
-        nameSpan.className = "split-participant-label";
-        nameSpan.textContent = `${m.name} (#${m.id})`;
-
-        const input = document.createElement("input");
-        input.type = "text";
-        input.inputMode = "decimal";
-        input.className = "split-input-field exact-input";
-        input.placeholder = "0.00";
-        input.dataset.memberId = String(m.id);
-        input.addEventListener("input", updateLivePreview);
-
-        row.appendChild(nameSpan);
-        row.appendChild(input);
-        el.splitParticipantsContainer.appendChild(row);
-      });
-    }
-  }
-
-  function getSplitConfigFromDOM() {
-    if (state.activeSplitType === "equal") {
-      const checkboxes = el.splitParticipantsContainer.querySelectorAll("input[type='checkbox']");
-      const participants = Array.from(checkboxes)
-        .filter((cb) => cb.checked)
-        .map((cb) => Number(cb.value));
-      return { type: "equal", participants };
-    }
-
-    if (state.activeSplitType === "shares") {
-      const inputs = el.splitParticipantsContainer.querySelectorAll(".share-input");
-      const shares = {};
-      inputs.forEach((inp) => {
-        const w = parseInt(inp.value, 10);
-        if (!isNaN(w) && w > 0) {
-          shares[inp.dataset.memberId] = w;
-        }
-      });
-      return { type: "shares", shares };
-    }
-
-    if (state.activeSplitType === "exact") {
-      const inputs = el.splitParticipantsContainer.querySelectorAll(".exact-input");
-      const amounts = {};
-      inputs.forEach((inp) => {
-        try {
-          const paise = MoneyUtils.parseRupeesToPaise(inp.value.trim() || "0");
-          if (paise > 0) {
-            amounts[inp.dataset.memberId] = paise;
-          }
-        } catch {
-          // Incomplete decimal or invalid
-        }
-      });
-      return { type: "exact", amounts };
-    }
-
-    return { type: "equal" };
-  }
-
-  function updateLivePreview() {
-    el.previewBreakdownList.innerHTML = "";
-
-    let amountPaise = 0;
-    try {
-      amountPaise = MoneyUtils.parseRupeesToPaise(el.inputExpenseAmount.value);
-    } catch {
-      el.previewStatusPill.className = "badge badge-neutral";
-      el.previewStatusPill.textContent = "Enter valid amount";
-      return;
-    }
-
-    const splitConfig = getSplitConfigFromDOM();
-    const result = MoneyUtils.calculatePreviewSplits(
-      amountPaise,
-      state.activeSplitType,
-      splitConfig,
-      state.members
-    );
-
-    if (!result.isValid) {
-      el.previewStatusPill.className = "badge badge-warning";
-      el.previewStatusPill.textContent = result.message || "Invalid split";
-      return;
-    }
-
-    el.previewStatusPill.className = "badge badge-success";
-    el.previewStatusPill.textContent = result.message || "Valid split";
-
-    const keys = Object.keys(result.splits).map(Number).sort((a, b) => a - b);
-    keys.forEach((mId) => {
-      const row = document.createElement("div");
-      row.className = "preview-breakdown-row";
-
-      const name = document.createElement("span");
-      name.className = "preview-member-name";
-      name.textContent = (state.membersMap.get(mId) || {}).name || `#${mId}`;
-
-      const shareAmt = document.createElement("span");
-      shareAmt.className = "preview-member-amount";
-      shareAmt.textContent = MoneyUtils.formatPaiseToRupees(result.splits[mId]);
-
-      row.appendChild(name);
-      row.appendChild(shareAmt);
-      el.previewBreakdownList.appendChild(row);
-    });
-  }
-
-  async function handleSaveExpense(e) {
-    e.preventDefault();
-    el.errorExpenseDesc.textContent = "";
-    el.errorExpenseAmount.textContent = "";
-    el.errorExpensePayer.textContent = "";
-
-    const description = el.inputExpenseDesc.value.trim();
-    const rawAmount = el.inputExpenseAmount.value.trim();
-    const paidBy = Number(el.selectExpensePayer.value);
-
-    let hasError = false;
-
-    if (!description) {
-      el.errorExpenseDesc.textContent = "Description is required";
-      hasError = true;
-    }
-
-    let amountPaise;
-    try {
-      amountPaise = MoneyUtils.parseRupeesToPaise(rawAmount);
-      if (amountPaise < 1 || amountPaise > MoneyUtils.MAX_EXPENSE_PAISE) {
-        el.errorExpenseAmount.textContent = "Amount must be between ₹0.01 and ₹1,00,00,000.00";
-        hasError = true;
-      }
-    } catch (err) {
-      el.errorExpenseAmount.textContent = err.message;
-      hasError = true;
-    }
-
-    if (!paidBy || !state.membersMap.has(paidBy)) {
-      el.errorExpensePayer.textContent = "Please select a valid payer";
-      hasError = true;
-    }
-
-    const split = getSplitConfigFromDOM();
-
-    // Validate participants for equal split
-    if (split.type === "equal" && (!split.participants || split.participants.length === 0)) {
-      showToast("Select at least one participant", "error");
-      hasError = true;
-    }
-
-    if (hasError) return;
-
-    setBtnLoading(el.btnSaveExpense, true);
-    try {
-      await API.addExpense(state.currentGroupId, {
-        description,
-        amount: amountPaise,
-        paidBy,
-        split,
-      });
-
-      showToast("Expense added successfully!", "success");
-      closeExpenseModal();
-      await loadGroupData(state.currentGroupId);
-    } catch (err) {
-      if (err.errors) {
-        if (err.errors.description) el.errorExpenseDesc.textContent = err.errors.description;
-        if (err.errors.amount) el.errorExpenseAmount.textContent = err.errors.amount;
-        if (err.errors.paidBy) el.errorExpensePayer.textContent = err.errors.paidBy;
-        if (err.errors["split.participants"]) showToast(err.errors["split.participants"], "error");
-        if (err.errors["split.shares"]) showToast(err.errors["split.shares"], "error");
-        if (err.errors["split.amounts"]) showToast(err.errors["split.amounts"], "error");
-      } else {
-        showToast(err.message || "Failed to add expense", "error");
-      }
-    } finally {
-      setBtnLoading(el.btnSaveExpense, false);
-    }
   }
 
   // --- ADD MEMBER MODAL ---
@@ -1222,11 +662,21 @@
 
   async function handleSaveMember(e) {
     e.preventDefault();
+    if (state.isOffline) {
+      showToast("Cannot add member while offline", "error");
+      return;
+    }
+
     el.errorNewMember.textContent = "";
     const name = el.inputNewMemberName.value.trim();
 
     if (!name) {
       el.errorNewMember.textContent = "Member name is required";
+      return;
+    }
+
+    if (name.length > 40) {
+      el.errorNewMember.textContent = "Member name cannot exceed 40 characters";
       return;
     }
 
@@ -1241,6 +691,8 @@
         el.errorNewMember.textContent = "A member with this name already exists in the group";
       } else if (err.errors && err.errors.members) {
         el.errorNewMember.textContent = err.errors.members;
+      } else if (err.errors && err.errors.name) {
+        el.errorNewMember.textContent = err.errors.name;
       } else {
         el.errorNewMember.textContent = err.message || "Failed to add member";
       }
@@ -1249,55 +701,26 @@
     }
   }
 
-  // --- CONFIRM PAYMENT MODAL ---
-  function openPaymentConfirmModal(transfer, fromMember, toMember) {
-    state.isModalOpen = true;
-    state.pendingPayment = transfer;
-
-    el.paymentFromName.textContent = fromMember.name;
-    el.paymentToName.textContent = toMember.name;
-    el.paymentAmountDisplay.textContent = MoneyUtils.formatPaiseToRupees(transfer.amount);
-
-    el.modalPayment.classList.remove("hidden");
-    el.modalPayment.setAttribute("aria-hidden", "false");
-  }
-
-  function closePaymentModal() {
-    state.isModalOpen = false;
-    state.pendingPayment = null;
-    el.modalPayment.classList.add("hidden");
-    el.modalPayment.setAttribute("aria-hidden", "true");
-  }
-
-  async function handleConfirmPayment() {
-    if (!state.pendingPayment) return;
-
-    setBtnLoading(el.btnConfirmPayment, true);
-    try {
-      await API.recordPayment(state.currentGroupId, {
-        from: state.pendingPayment.from,
-        to: state.pendingPayment.to,
-        amount: state.pendingPayment.amount,
-      });
-
-      showToast("Payment recorded! Balances updated.", "success");
-      closePaymentModal();
-      await loadGroupData(state.currentGroupId);
-    } catch (err) {
-      showToast(err.message || "Failed to record payment", "error");
-    } finally {
-      setBtnLoading(el.btnConfirmPayment, false);
-    }
-  }
-
   // =========================================================================
-  // UI Helpers
+  // Initialization
   // =========================================================================
-  function setBtnLoading(btn, isLoading) {
-    btn.disabled = isLoading;
-    const text = btn.querySelector(".btn-text");
-    const spinner = btn.querySelector(".btn-spinner");
-    if (text) text.classList.toggle("hidden", isLoading);
-    if (spinner) spinner.classList.toggle("hidden", !isLoading);
-  }
+  window.addEventListener("DOMContentLoaded", () => {
+    initHomeView();
+    initGroupView();
+
+    // Initialize Sub-modules
+    window.ExpensesModule.init(state, () => loadGroupData(state.currentGroupId));
+    window.BalancesModule.init(state);
+    window.SettlementsModule.init(state, () => loadGroupData(state.currentGroupId));
+
+    updateOnlineStatus();
+    handleRoute();
+  });
+
+  // Global App Expose
+  window.SplitFairApp = {
+    showToast,
+    copyToClipboard,
+    setBtnLoading,
+  };
 })();

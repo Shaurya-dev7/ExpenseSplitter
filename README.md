@@ -11,13 +11,17 @@
 
 ## 1. Executive Summary & Design Highlights
 
-When sharing expenses during trips, outings, or shared flat living, standard apps require every participant to create accounts, remember passwords, and navigate cumbersome flows. **SplitFair** solves this with a zero-friction, phone-first architecture:
+When sharing expenses during trips, outings, or shared flat living, traditional apps require every participant to install applications, register accounts, remember passwords, and navigate cumbersome screens. **SplitFair** solves this with a zero-friction, phone-first architecture:
 
 1. **Zero-Auth Access Model:** Creating a group generates a cryptographically unguessable, 16-character URL-safe identifier (`crypto.randomBytes(12).toString('base64url')`). Anyone holding the link can view expenses, record payments, and settle up.
 2. **Zero Floating-Point Money Math:** All amounts in database storage, calculations, API requests, and responses are whole-number integers in **paise** (1 INR = 100 paise). String-based decimal parsing and `BigInt` operations prevent IEEE-754 precision errors.
 3. **Deterministic Remainder Distribution:** Remainder paise from fractional divisions (`equal` or `shares` splits) are allocated deterministically (highest fractional remainder first, broken by lowest `memberId`). The sum of split allocations strictly equals the total expense.
 4. **Greedy Debt Simplification (Fewest Payments):** Net member balances are computed directly from the immutable transaction ledger. Debts are resolved by matching the largest debtor with the largest creditor iteratively, guaranteeing at most $k - 1$ transfers for $k$ unsettled members with zero circular transactions.
-5. **Real-Time Live Synchronization:** 5-second non-intrusive polling ensures participants on different devices stay synchronized without page reloads.
+5. **Real-Time Live Synchronization:** 4-second non-intrusive polling ensures participants on different devices stay synchronized without page reloads.
+
+> [!WARNING]
+> **Access-Control Limitation (Zero-Auth Design Contract):**  
+> The random 16-character group ID in the URL is the **sole access control**. Anyone who has the group link can view all expenses, add new members, record expenses, delete expenses, and record settlement payments. Do not share the link with unintended parties.
 
 ---
 
@@ -32,131 +36,60 @@ When sharing expenses during trips, outings, or shared flat living, standard app
 
 ---
 
-## 3. Architecture Overview
+## 3. Architecture & Code Organization
 
 ```
-                                +-----------------------------------------+
-                                |          Mobile / Desktop Client        |
-                                |  (Vanilla HTML5, CSS3, ES2020+ SPA)     |
-                                +--------------------+--------------------+
-                                                     |
-                                            HTTP / JSON Fetch
-                                            (5s Live Polling)
-                                                     v
-+---------------------------------------------------------------------------------------------------+
-| Express.js Server Layer (src/app.js)                                                              |
-|                                                                                                   |
-|  [ Routes & Middleware ]                                                                          |
-|   ├── POST /api/groups                  (Create group with initial members)                       |
-|   ├── GET  /api/groups/:gid             (Get group metadata and member roster)                    |
-|   ├── POST /api/groups/:gid/members     (Add member up to 20 max)                                 |
-|   ├── POST /api/groups/:gid/expenses    (Record new expense with immutable split snapshot)        |
-|   ├── GET  /api/groups/:gid/expenses    (List group expenses, oldest first)                       |
-|   ├── DELETE /api/groups/:gid/expenses/:eid (Delete expense and recalculate)                     |
-|   ├── POST /api/groups/:gid/payments    (Record settlement payment)                               |
-|   ├── GET  /api/groups/:gid/balances    (Compute net member balances: sum = 0)                    |
-|   └── GET  /api/groups/:gid/settlements (Greedy debt simplification: fewest payments)             |
-+------------------------------------+--------------------------------------------------------------+
-                                     |
-                                     v
-+------------------------------------+--------------------------------------------------------------+
-| Core Domain & Algorithms (src/services/, src/utils/)                                              |
-|                                                                                                   |
-|  ├── Money Math (src/utils/money.js)           -> Integer paise, strict decimal parser, zero float|
-|  ├── Split Service (src/services/split.service.js) -> Equal, Shares, Exact with deterministic rem. |
-|  ├── Balance Service (src/services/balance.service.js) -> Net balance derivation: sum(balances)=0 |
-|  └── Settlement Service (src/services/settlement.service.js) -> Greedy (max debtor, max creditor)|
-+------------------------------------+--------------------------------------------------------------+
-                                     |
-                                     v
-+------------------------------------+--------------------------------------------------------------+
-| SQLite Database Engine (src/database/ via better-sqlite3)                                         |
-|                                                                                                   |
-|  ├── PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;            |
-|  ├── Transactions: BEGIN IMMEDIATE for all write paths (safe against concurrency & lost updates)  |
-|  └── Tables: groups, members, expenses, payments (Strict DDL CHECK constraints)                   |
-+---------------------------------------------------------------------------------------------------+
+SplitFair Repository Structure
+├── public/                     # Static Frontend (Zero Build Step)
+│   ├── css/
+│   │   └── style.css           # Phone-first design system (360px-1440px, touch >=44px)
+│   ├── js/
+│   │   ├── money.js            # Client integer paise parsing & preview split math
+│   │   ├── api.js              # Fetch client wrapper for all 9 REST endpoints
+│   │   ├── expenses.js         # Expense listing, delete flow, Quick Item Calculator
+│   │   ├── balances.js         # Net member balances and zero-sum checksum
+│   │   ├── settlements.js      # Greedy transfers, payment confirmation, reminder copy
+│   │   └── app.js              # Orchestrator, SPA routing, polling, offline detection
+│   └── index.html              # Semantic HTML5 SPA layout
+├── src/                        # Node.js + Express.js Backend
+│   ├── controllers/            # Route controllers with strict input validation
+│   ├── database/
+│   │   ├── db.js               # better-sqlite3 connection factory with PRAGMAs
+│   │   ├── schema.js           # DDL schema with defensive CHECK constraints
+│   │   ├── repository.js       # Transaction-safe data access layer (BEGIN IMMEDIATE)
+│   │   └── errors.js           # Domain database error classes
+│   ├── middleware/             # Central error & JSON syntax handlers
+│   ├── routes/                 # Express router mounts
+│   ├── services/
+│   │   ├── split.service.js    # Equal, shares, exact split deterministic calculations
+│   │   ├── balance.service.js  # Ledger balance derivation (sum = 0 invariant)
+│   │   └── settlement.service.js # Greedy debt simplification (fewest payments)
+│   ├── utils/
+│   │   ├── money.js            # Exact string-splitting & BigInt integer arithmetic
+│   │   └── group-id.js         # Cryptographically random URL-safe ID generator
+│   ├── app.js                  # Express application setup & middleware pipeline
+│   └── server.js               # Entrypoint listening on PORT (default 3000)
+├── tests/                      # Automated Test Suite (node:test + supertest)
+├── .env.example                # Environment variable documentation
+├── .gitignore                  # Git ignore rules (*.db, node_modules/, .env, data/)
+└── package.json                # Project manifest and scripts
 ```
 
 ---
 
 ## 4. REST API Specification
 
-### Group Endpoints
-- **`POST /api/groups`**
-  - **Body:** `{ "name": "Goa Trip", "members": ["Asha", "Ben", "Charlie"] }`
-  - **Response (`201 Created`):**
-    ```json
-    {
-      "id": "f8X2kL90pQ1mZaB4",
-      "name": "Goa Trip",
-      "members": [
-        { "id": 1, "name": "Asha" },
-        { "id": 2, "name": "Ben" },
-        { "id": 3, "name": "Charlie" }
-      ]
-    }
-    ```
-- **`GET /api/groups/:gid`**
-  - **Response (`200 OK`):** Group metadata and member array.
-- **`POST /api/groups/:gid/members`**
-  - **Body:** `{ "name": "Deepa" }`
-  - **Response (`201 Created`):** `{ "id": 4, "name": "Deepa" }` (sequential member ID within group, max 20).
-
-### Expense Endpoints
-- **`POST /api/groups/:gid/expenses`**
-  - **Body:**
-    ```json
-    {
-      "description": "Seafood Lunch",
-      "amount": 9005,
-      "paidBy": 1,
-      "split": {
-        "type": "equal",
-        "participants": [1, 2, 3]
-      }
-    }
-    ```
-  - **Response (`201 Created`):**
-    ```json
-    {
-      "id": 1,
-      "description": "Seafood Lunch",
-      "amount": 9005,
-      "paidBy": 1,
-      "splits": { "1": 3002, "2": 3002, "3": 3001 },
-      "createdAt": "2026-11-22T02:00:00.000Z"
-    }
-    ```
-- **`GET /api/groups/:gid/expenses`**
-  - **Response (`200 OK`):** Array of expenses sorted chronologically (oldest first).
-- **`DELETE /api/groups/:gid/expenses/:eid`**
-  - **Response (`204 No Content`):** Empty body.
-
-### Payment & Settlement Endpoints
-- **`POST /api/groups/:gid/payments`**
-  - **Body:** `{ "from": 2, "to": 1, "amount": 3002 }`
-  - **Response (`201 Created`):** `{ "id": 1, "from": 2, "to": 1, "amount": 3002, "createdAt": "..." }`
-- **`GET /api/groups/:gid/balances`**
-  - **Response (`200 OK`):**
-    ```json
-    {
-      "balances": [
-        { "memberId": 1, "name": "Asha", "balance": 3001 },
-        { "memberId": 2, "name": "Ben", "balance": 0 },
-        { "memberId": 3, "name": "Charlie", "balance": -3001 }
-      ]
-    }
-    ```
-- **`GET /api/groups/:gid/settlements`**
-  - **Response (`200 OK`):**
-    ```json
-    {
-      "transfers": [
-        { "from": 3, "to": 1, "amount": 3001 }
-      ]
-    }
-    ```
+| Method | Endpoint | Success Status | Description | Request Body |
+|---|---|---|---|---|
+| `POST` | `/api/groups` | `201 Created` | Create new group with 2–20 members | `{ "name": "Goa Trip", "members": ["Asha", "Ben"] }` |
+| `GET` | `/api/groups/:gid` | `200 OK` | Get group metadata and member roster | *None* |
+| `POST` | `/api/groups/:gid/members` | `201 Created` | Add single member (up to 20 cap) | `{ "name": "Charlie" }` |
+| `POST` | `/api/groups/:gid/expenses` | `201 Created` | Add expense with deterministic splits | `{ "description": "Dinner", "amount": 9000, "paidBy": 1, "split": { "type": "equal" } }` |
+| `GET` | `/api/groups/:gid/expenses` | `200 OK` | List expenses (chronological, oldest first) | *None* |
+| `DELETE` | `/api/groups/:gid/expenses/:eid` | `204 No Content` | Delete expense and recalculate balances | *None* |
+| `POST` | `/api/groups/:gid/payments` | `201 Created` | Record settlement payment | `{ "from": 2, "to": 1, "amount": 4500 }` |
+| `GET` | `/api/groups/:gid/balances` | `200 OK` | Compute current member net balances | *None* |
+| `GET` | `/api/groups/:gid/settlements` | `200 OK` | Compute greedy debt simplification transfers | *None* |
 
 ---
 
@@ -192,38 +125,64 @@ When sharing expenses during trips, outings, or shared flat living, standard app
 
 ---
 
-## 6. Setup & Verification Instructions
+## 6. Implemented Optional Features (Approved Extras) & Known Limitations
+
+### Approved Extras Implemented:
+1. **Approved Extra A — Live Split Preview & Remainder Explanations:** Real-time breakdown in the Add Expense modal before saving, highlighting the distribution of any remainder paise to participants.
+2. **Approved Extra B — Settlement Explanation Banner:** Clarifies how greedy debt simplification minimizes transfers and explicitly indicates that suggested transfers are **not** considered paid until recorded via "Mark as Paid".
+3. **Approved Extra C — Quick Item Calculator:** A collapsible in-form calculator allowing users to enter individual line items (parsed as exact integer paise) and apply the computed total directly to the expense amount field.
+4. **Approved Extra D — One-Click Plain-Text Payment Reminders:** A "Copy Reminder" action on every suggested settlement that copies a pre-formatted reminder to the clipboard for manual sharing across any platform, accompanied by a direct WhatsApp deep link.
+5. **Offline Indicator & Guardrail:** Immediate visual banner when offline that prevents data-loss or failed write operations.
+
+### Known Limitations:
+1. **Access Control Model:** Unlisted random URL-safe ID is the only access gate (zero user accounts or passwords by design).
+2. **Group Size Cap:** Maximum of 20 members per group.
+3. **Currency Support:** Single currency (INR, stored as integer paise).
+4. **Expense Amount Boundary:** Maximum expense value of 1,000,000,000 paise (₹1,00,00,000.00).
+
+---
+
+## 7. Setup & Verification Instructions
 
 ### Prerequisites
 - Node.js >= 20.0.0
 - npm >= 9.0.0
 
-### Quick Start
+### Configuration
+Create a `.env` file from `.env.example`:
 ```bash
-# 1. Install dependencies
-npm install
+cp .env.example .env
+```
+Default parameters:
+- `PORT=3000`
+- `DB_PATH=./data/expenses.db`
+- `NODE_ENV=development`
 
-# 2. Start the server (auto-creates database and schema)
+### One-Command Startup
+```bash
 npm start
 ```
-The server will start listening on port 3000:
-- **Interactive Web App:** `http://localhost:3000`
-- **REST API Health Check:** `http://localhost:3000/api/health`
+On startup:
+- Creates the `./data/` directory and SQLite database file if they do not exist.
+- Executes `initSchema()` to initialize all tables and indexes.
+- Starts the Express HTTP server on the configured port.
+- **Web UI:** `http://localhost:3000`
+- **Health Check:** `http://localhost:3000/api/health`
 
-### Running the Comprehensive Test Suite
+### Running the Automated Test Suite
 ```bash
 npm test
 ```
-Executes all 87 unit and integration tests across all layers:
-- Database schema, DDL constraints, PRAGMA verification, and connection lifecycle.
-- Integer paise parsing, rounding boundaries, and formatting.
-- Equal, shares, and exact split calculation with deterministic remainder allocation.
-- Balance computation and zero-sum conservation.
+Executes all 87 tests across:
+- Database schema creation, foreign key enforcement, WAL mode, transaction isolation.
+- Exact integer paise arithmetic, rounding boundaries, and string parsing.
+- Split allocations (equal, shares, exact) with deterministic tie-breaking.
+- Net balance derivations and zero-sum conservation.
 - Greedy settlement algorithm invariants.
-- REST API integration tests (all 9 endpoints, 400 validation errors, 404 handling, 409 duplicate checks).
-- Static frontend asset delivery and routing.
+- REST API contracts, validation error responses, 404s, and 409 duplicate checks.
+- Static frontend asset delivery and accessibility checks.
 
 ---
 
-## 7. License
+## 8. License
 ISC
