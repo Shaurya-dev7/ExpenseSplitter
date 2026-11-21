@@ -2,20 +2,416 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Group Expense Splitter</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <meta name="description" content="Phone-first zero-auth group expense splitter with exact integer math and fewest payments settlement algorithm.">
+  <title>SplitFair — Group Expense Splitter</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-  <div id="app">
-    <header>
-      <h1>Group Expense Splitter</h1>
-      <p class="subtitle">Problem C4 — Fewest Payments</p>
+  <!-- Global App Shell -->
+  <div id="app" class="app-container">
+
+    <!-- Global App Header -->
+    <header class="app-header">
+      <div class="header-content">
+        <a href="#/" class="brand-link" id="brand-link" title="Go to splitfair home">
+          <span class="brand-icon">⚡</span>
+          <div class="brand-text">
+            <h1 class="brand-title">SplitFair</h1>
+            <span class="brand-badge">Fewest Payments (C4)</span>
+          </div>
+        </a>
+        <div id="header-actions" class="header-actions hidden">
+          <button id="btn-share-link" class="btn btn-secondary btn-sm" title="Copy shareable link">
+            <span class="icon">🔗</span> <span class="btn-label">Share</span>
+          </button>
+          <button id="btn-share-whatsapp" class="btn btn-whatsapp btn-sm" title="Share via WhatsApp">
+            <span class="icon">💬</span> <span class="btn-label">WhatsApp</span>
+          </button>
+        </div>
+      </div>
     </header>
-    <main id="main-content">
-      <p>Environment setup ready. Implementation pending.</p>
+
+    <!-- Main Content Area (SPA Views) -->
+    <main id="main-content" class="main-content">
+
+      <!-- ======================================================== -->
+      <!-- SCREEN 1: HOME VIEW (#/)                                 -->
+      <!-- ======================================================== -->
+      <section id="view-home" class="view">
+        <div class="hero-section">
+          <h2 class="hero-title">Split bills without the friction.</h2>
+          <p class="hero-desc">Zero signups. Phone-first. Exact integer paise math. Fewest payment settlements.</p>
+        </div>
+
+        <!-- Create Group Card -->
+        <div class="card create-group-card">
+          <div class="card-header">
+            <h3 class="card-title">Create a New Group</h3>
+            <span id="member-counter-badge" class="badge badge-neutral">2/20 members</span>
+          </div>
+          <form id="form-create-group" class="form-flow" novalidate>
+            <div class="form-group">
+              <label for="input-group-name" class="form-label">Group Name <span class="req">*</span></label>
+              <input
+                type="text"
+                id="input-group-name"
+                name="groupName"
+                class="form-input"
+                placeholder="e.g. Goa Trip 2026, Flat 402, Dinner Out"
+                maxlength="100"
+                required
+                autocomplete="off"
+              >
+              <span class="field-error" id="error-group-name"></span>
+            </div>
+
+            <div class="form-group">
+              <div class="form-label-row">
+                <label class="form-label">Members <span class="req">*</span> (min 2, max 20)</label>
+                <button type="button" id="btn-add-member-field" class="btn-inline-action" title="Add another member">
+                  + Add Member
+                </button>
+              </div>
+              <div id="member-inputs-list" class="member-inputs-list">
+                <!-- Member rows dynamically injected here -->
+              </div>
+              <span class="field-error" id="error-members"></span>
+            </div>
+
+            <button type="submit" id="btn-create-group-submit" class="btn btn-primary btn-block btn-lg">
+              <span class="btn-text">Create Group & Get Link</span>
+              <span class="btn-spinner hidden"></span>
+            </button>
+          </form>
+        </div>
+
+        <!-- Join / Open Existing Group Card -->
+        <div class="card join-group-card">
+          <h3 class="card-title">Open Existing Group</h3>
+          <p class="card-subtitle">Paste a group URL or 16-character group ID</p>
+          <form id="form-join-group" class="join-form" novalidate>
+            <div class="join-input-wrap">
+              <input
+                type="text"
+                id="input-join-id"
+                class="form-input"
+                placeholder="e.g. n_9f... or full link"
+                autocomplete="off"
+              >
+              <button type="submit" class="btn btn-secondary" id="btn-join-submit">Open</button>
+            </div>
+            <span class="field-error" id="error-join"></span>
+          </form>
+        </div>
+
+        <!-- Recent Groups Card (Stored in LocalStorage) -->
+        <div id="recent-groups-card" class="card recent-groups-card hidden">
+          <h3 class="card-title">Recent Groups</h3>
+          <div id="recent-groups-list" class="recent-groups-list"></div>
+        </div>
+      </section>
+
+
+      <!-- ======================================================== -->
+      <!-- SCREEN 2: GROUP VIEW (#/groups/:gid)                     -->
+      <!-- ======================================================== -->
+      <section id="view-group" class="view hidden">
+        <!-- Group Header Card -->
+        <div class="group-header-card card">
+          <div class="group-top-row">
+            <button id="btn-back-home" class="btn-icon-back" title="Back to home">
+              ← <span class="sr-only">Back</span>
+            </button>
+            <div class="group-title-wrap">
+              <h2 id="group-title" class="group-title">Loading group...</h2>
+              <div class="group-meta">
+                <span id="group-id-badge" class="badge badge-outline" title="Click to copy ID">ID</span>
+                <span id="group-member-count" class="badge badge-neutral">0 members</span>
+              </div>
+            </div>
+            <button id="btn-open-add-member" class="btn btn-secondary btn-sm" title="Add member to group">
+              + Member
+            </button>
+          </div>
+
+          <!-- Members Chip Strip -->
+          <div class="members-chips-container">
+            <span class="members-label">Members:</span>
+            <div id="members-chip-list" class="members-chip-list">
+              <!-- Chips injected here -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab Navigation (Phone-First 3 Tabs) -->
+        <nav class="group-nav-tabs" role="tablist">
+          <button
+            class="tab-btn active"
+            id="tab-btn-expenses"
+            data-tab="expenses"
+            role="tab"
+            aria-selected="true"
+            aria-controls="panel-expenses"
+          >
+            <span class="tab-icon">🧾</span>
+            <span class="tab-title">Expenses</span>
+            <span id="tab-badge-expenses" class="tab-badge">0</span>
+          </button>
+          <button
+            class="tab-btn"
+            id="tab-btn-balances"
+            data-tab="balances"
+            role="tab"
+            aria-selected="false"
+            aria-controls="panel-balances"
+          >
+            <span class="tab-icon">⚖️</span>
+            <span class="tab-title">Balances</span>
+            <span id="tab-badge-balances" class="tab-badge">0</span>
+          </button>
+          <button
+            class="tab-btn"
+            id="tab-btn-settlements"
+            data-tab="settlements"
+            role="tab"
+            aria-selected="false"
+            aria-controls="panel-settlements"
+          >
+            <span class="tab-icon">🤝</span>
+            <span class="tab-title">Settle Up</span>
+            <span id="tab-badge-settlements" class="tab-badge">0</span>
+          </button>
+        </nav>
+
+        <!-- Tab 1: Expenses Panel -->
+        <div id="panel-expenses" class="tab-panel active" role="tabpanel">
+          <!-- Summary Banner & Action -->
+          <div class="expenses-action-bar">
+            <div class="total-spend-box">
+              <span class="total-spend-label">Total Spend</span>
+              <span id="total-group-spend" class="total-spend-val">₹0.00</span>
+            </div>
+            <button id="btn-open-add-expense" class="btn btn-primary btn-md">
+              <span class="icon">+</span> Add Expense
+            </button>
+          </div>
+
+          <!-- Expenses List Container -->
+          <div id="expenses-list" class="expenses-list">
+            <!-- Expenses or empty state injected dynamically -->
+          </div>
+        </div>
+
+        <!-- Tab 2: Balances Panel -->
+        <div id="panel-balances" class="tab-panel hidden" role="tabpanel">
+          <div class="balances-header-strip">
+            <span class="balances-subtext">Net balances across all expenses and recorded payments.</span>
+            <span id="balance-checksum-badge" class="badge badge-success">Balanced (Σ = ₹0.00)</span>
+          </div>
+          <div id="balances-list" class="balances-list">
+            <!-- Balance cards injected dynamically -->
+          </div>
+        </div>
+
+        <!-- Tab 3: Settle Up Panel -->
+        <div id="panel-settlements" class="tab-panel hidden" role="tabpanel">
+          <div class="settlements-header-strip">
+            <div class="settlements-info">
+              <h3 class="panel-section-title">Fewest Payments Plan</h3>
+              <p class="panel-section-desc">Greedy debt simplification pairs largest debtors with largest creditors, settling all balances with at most k−1 transactions.</p>
+            </div>
+          </div>
+          <div id="settlements-list" class="settlements-list">
+            <!-- Settlement cards or celebratory empty state injected dynamically -->
+          </div>
+        </div>
+      </section>
+
     </main>
+
+    <!-- ======================================================== -->
+    <!-- MODAL: ADD EXPENSE                                       -->
+    <!-- ======================================================== -->
+    <div id="modal-expense" class="modal-backdrop hidden" aria-hidden="true" role="dialog" aria-labelledby="modal-expense-title">
+      <div class="modal-sheet">
+        <div class="modal-header">
+          <h3 id="modal-expense-title" class="modal-title">Add Expense</h3>
+          <button id="btn-close-expense-modal" class="btn-close" aria-label="Close modal">&times;</button>
+        </div>
+
+        <form id="form-add-expense" class="modal-body form-flow" novalidate>
+          <!-- Description -->
+          <div class="form-group">
+            <label for="input-expense-desc" class="form-label">Description <span class="req">*</span></label>
+            <input
+              type="text"
+              id="input-expense-desc"
+              name="description"
+              class="form-input"
+              placeholder="e.g. Biryani dinner, Uber to airport"
+              maxlength="200"
+              required
+              autocomplete="off"
+            >
+            <span class="field-error" id="error-expense-desc"></span>
+          </div>
+
+          <!-- Amount & Paid By Grid -->
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="input-expense-amount" class="form-label">Amount (₹) <span class="req">*</span></label>
+              <div class="rupee-input-wrapper">
+                <span class="rupee-symbol">₹</span>
+                <input
+                  type="text"
+                  inputmode="decimal"
+                  id="input-expense-amount"
+                  name="amount"
+                  class="form-input pl-rupee"
+                  placeholder="0.00"
+                  required
+                  autocomplete="off"
+                >
+              </div>
+              <span class="field-error" id="error-expense-amount"></span>
+            </div>
+
+            <div class="form-group">
+              <label for="select-expense-payer" class="form-label">Paid By <span class="req">*</span></label>
+              <select id="select-expense-payer" name="paidBy" class="form-select" required>
+                <!-- Populated with current group members -->
+              </select>
+              <span class="field-error" id="error-expense-payer"></span>
+            </div>
+          </div>
+
+          <!-- Split Type Segmented Control -->
+          <div class="form-group">
+            <label class="form-label">Split Method</label>
+            <div class="segmented-control" role="radiogroup" aria-label="Split method">
+              <button type="button" class="segment-btn active" data-type="equal" role="radio" aria-checked="true">
+                Equal (=)
+              </button>
+              <button type="button" class="segment-btn" data-type="shares" role="radio" aria-checked="false">
+                Shares (1:2:...)
+              </button>
+              <button type="button" class="segment-btn" data-type="exact" role="radio" aria-checked="false">
+                Exact (₹)
+              </button>
+            </div>
+          </div>
+
+          <!-- Dynamic Split Details Container -->
+          <div class="split-config-box">
+            <div class="split-config-header">
+              <span id="split-config-title" class="split-config-title">Split among participants</span>
+              <button type="button" id="btn-toggle-all-participants" class="btn-inline-action">
+                Select All
+              </button>
+            </div>
+
+            <div id="split-participants-container" class="split-participants-container">
+              <!-- Checkboxes, share weight inputs, or exact amount inputs -->
+            </div>
+          </div>
+
+          <!-- Live Split Preview Box -->
+          <div class="live-preview-box">
+            <div class="preview-header">
+              <span class="preview-label">Live Split Preview:</span>
+              <span id="preview-status-pill" class="badge badge-neutral">Enter amount</span>
+            </div>
+            <div id="preview-breakdown-list" class="preview-breakdown-list">
+              <!-- Live preview lines -->
+            </div>
+          </div>
+
+          <!-- Modal Actions -->
+          <div class="modal-footer">
+            <button type="button" id="btn-cancel-expense" class="btn btn-secondary">Cancel</button>
+            <button type="submit" id="btn-save-expense" class="btn btn-primary">
+              <span class="btn-text">Save Expense</span>
+              <span class="btn-spinner hidden"></span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- MODAL: ADD MEMBER                                        -->
+    <!-- ======================================================== -->
+    <div id="modal-member" class="modal-backdrop hidden" aria-hidden="true" role="dialog" aria-labelledby="modal-member-title">
+      <div class="modal-sheet modal-sm">
+        <div class="modal-header">
+          <h3 id="modal-member-title" class="modal-title">Add Member</h3>
+          <button id="btn-close-member-modal" class="btn-close" aria-label="Close modal">&times;</button>
+        </div>
+        <form id="form-add-member" class="modal-body form-flow" novalidate>
+          <div class="form-group">
+            <label for="input-new-member-name" class="form-label">Member Name <span class="req">*</span></label>
+            <input
+              type="text"
+              id="input-new-member-name"
+              class="form-input"
+              placeholder="e.g. Priya"
+              maxlength="50"
+              required
+              autocomplete="off"
+            >
+            <span class="field-error" id="error-new-member"></span>
+          </div>
+          <div class="modal-footer">
+            <button type="button" id="btn-cancel-member" class="btn btn-secondary">Cancel</button>
+            <button type="submit" id="btn-save-member" class="btn btn-primary">
+              <span class="btn-text">Add to Group</span>
+              <span class="btn-spinner hidden"></span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- MODAL: CONFIRM PAYMENT (SETTLE UP)                       -->
+    <!-- ======================================================== -->
+    <div id="modal-payment" class="modal-backdrop hidden" aria-hidden="true" role="dialog" aria-labelledby="modal-payment-title">
+      <div class="modal-sheet modal-sm">
+        <div class="modal-header">
+          <h3 id="modal-payment-title" class="modal-title">Confirm Settlement Payment</h3>
+          <button id="btn-close-payment-modal" class="btn-close" aria-label="Close modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p id="payment-confirm-desc" class="payment-confirm-desc">Are you sure you want to record this payment?</p>
+          <div class="payment-highlight-card">
+            <div class="transfer-from-to">
+              <span id="payment-from-name" class="name-pill from-pill">Sender</span>
+              <span class="arrow">➔</span>
+              <span id="payment-to-name" class="name-pill to-pill">Receiver</span>
+            </div>
+            <div id="payment-amount-display" class="payment-amount-large">₹0.00</div>
+          </div>
+          <p class="payment-note">This records an immutable payment in SQLite and instantly recalculates all net balances.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="btn-cancel-payment" class="btn btn-secondary">Cancel</button>
+          <button type="button" id="btn-confirm-payment" class="btn btn-success">
+            <span class="btn-text">Record Payment</span>
+            <span class="btn-spinner hidden"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
   </div>
+
+  <!-- Vanilla Scripts in Dependency Order -->
+  <script src="/js/money.js"></script>
+  <script src="/js/api.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>
