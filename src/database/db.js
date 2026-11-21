@@ -46,20 +46,20 @@ const db = createDb();
  * Close a database connection gracefully and idempotently.
  * @param {import("better-sqlite3").Database} [database]
  */
-function closeDb(database = db) {
-  if (database && database.open) {
-    database.close();
+  function closeDb(database = db) {
+    if (database && database.open) {
+      database.close();
+    }
   }
-}
 
-// Graceful process shutdown cleanup
-process.once("SIGINT", () => {
-  closeDb(db);
-});
-process.once("SIGTERM", () => {
-  closeDb(db);
-});
+  // Graceful process shutdown cleanup
+  process.once("SIGINT", () => {
+    closeDb(db);
+  });
+  process.once("SIGTERM", () => {
+    closeDb(db);
+  });
 
-module.exports = db;
-module.exports.createDb = createDb;
-module.exports.closeDb = closeDb;
+  module.exports = db;
+  module.exports.createDb = createDb;
+  module.exports.closeDb = closeDb;
