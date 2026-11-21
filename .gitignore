@@ -11,8 +11,7 @@ node_modules/
 *.db-shm
 *.sqlite
 *.sqlite3
-data/*.db
-data/*.sqlite
+data/
 
 # Logs & OS artifacts
 npm-debug.log*
