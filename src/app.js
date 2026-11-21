@@ -1,5 +1,9 @@
 const express = require('express');
 const path = require('path');
+const { initSchema } = require('./database/schema');
+
+// Ensure database schema and tables exist on startup (PRD 4.3)
+initSchema();
 
 const app = express();
 
