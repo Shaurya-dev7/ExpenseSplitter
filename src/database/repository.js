@@ -8,18 +8,28 @@ const {
 } = require("./errors");
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Transaction Helpers
 // ---------------------------------------------------------------------------
 
 /**
- * Run `fn` inside a BEGIN IMMEDIATE transaction on `targetDb`.
- * Rolls back automatically on throw.
+ * Execute fn in a BEGIN IMMEDIATE transaction.
+ * Acquires write lock immediately, preventing concurrent write upgrades
+ * and ensuring SQLite honors busy_timeout.
+ * Rolls back automatically if an error is thrown.
  */
 function immediate(targetDb, fn) {
   const run = targetDb.transaction(fn);
-  // better-sqlite3 .transaction() uses BEGIN DEFERRED by default.
-  // Calling run.immediate() switches it to BEGIN IMMEDIATE.
   return run.immediate();
+}
+
+/**
+ * Execute fn in a read transaction (BEGIN DEFERRED).
+ * In WAL mode, provides consistent snapshot isolation across multiple SELECTs
+ * so concurrent writes never reveal partial state.
+ */
+function readTransaction(targetDb, fn) {
+  const run = targetDb.transaction(fn);
+  return run();
 }
 
 // ---------------------------------------------------------------------------
@@ -28,9 +38,15 @@ function immediate(targetDb, fn) {
 
 function createGroupWithMembers({ id, name, members, createdAt }, targetDb = db) {
   return immediate(targetDb, () => {
-    targetDb
-      .prepare("INSERT INTO groups (id, name, created_at) VALUES (?, ?, ?)")
-      .run(id, name, createdAt);
+    try {
+      targetDb
+        .prepare("INSERT INTO groups (id, name, created_at) VALUES (?, ?, ?)")
+        .run(id, name, createdAt);
+    } catch (err) {
+      const domainErr = translateSqliteError(err);
+      if (domainErr) throw domainErr;
+      throw err;
+    }
 
     const insertMember = targetDb.prepare(
       "INSERT INTO members (group_id, id, name, created_at) VALUES (?, ?, ?, ?)"
@@ -38,7 +54,7 @@ function createGroupWithMembers({ id, name, members, createdAt }, targetDb = db)
 
     const result = [];
     for (let i = 0; i < members.length; i++) {
-      const trimmed = members[i].trim();
+      const trimmed = typeof members[i] === "string" ? members[i].trim() : members[i];
       const memberId = i + 1;
       try {
         insertMember.run(id, memberId, trimmed, createdAt);
@@ -62,17 +78,19 @@ function createGroupWithMembers({ id, name, members, createdAt }, targetDb = db)
 // ---------------------------------------------------------------------------
 
 function getGroupById(groupId, targetDb = db) {
-  const group = targetDb
-    .prepare("SELECT id, name FROM groups WHERE id = ?")
-    .get(groupId);
+  return readTransaction(targetDb, () => {
+    const group = targetDb
+      .prepare("SELECT id, name FROM groups WHERE id = ?")
+      .get(groupId);
 
-  if (!group) return null;
+    if (!group) return null;
 
-  const members = targetDb
-    .prepare("SELECT id, name FROM members WHERE group_id = ? ORDER BY id ASC")
-    .all(groupId);
+    const members = targetDb
+      .prepare("SELECT id, name FROM members WHERE group_id = ? ORDER BY id ASC")
+      .all(groupId);
 
-  return { id: group.id, name: group.name, members };
+    return { id: group.id, name: group.name, members };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -81,26 +99,26 @@ function getGroupById(groupId, targetDb = db) {
 
 function addMember(groupId, name, targetDb = db) {
   return immediate(targetDb, () => {
-    // Verify group exists
+    // 1. Verify group exists
     const group = targetDb
       .prepare("SELECT id FROM groups WHERE id = ?")
       .get(groupId);
     if (!group) throw groupNotFound(groupId);
 
-    // Check 20-member cap
+    // 2. Enforce 20-member cap
     const { count } = targetDb
       .prepare("SELECT COUNT(*) AS count FROM members WHERE group_id = ?")
       .get(groupId);
     if (count >= 20) throw memberLimitExceeded();
 
-    // Compute next sequential ID
+    // 3. Compute next sequential member ID (1..20)
     const { nextId } = targetDb
       .prepare(
         "SELECT COALESCE(MAX(id), 0) + 1 AS nextId FROM members WHERE group_id = ?"
       )
       .get(groupId);
 
-    const trimmed = name.trim();
+    const trimmed = typeof name === "string" ? name.trim() : name;
     const createdAt = new Date().toISOString();
 
     try {
@@ -132,27 +150,29 @@ function createExpense(
 ) {
   const splitsJson = typeof splits === "string" ? splits : JSON.stringify(splits);
 
-  try {
-    const info = targetDb
-      .prepare(
-        `INSERT INTO expenses (group_id, description, amount, paid_by, splits, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      )
-      .run(groupId, description, amount, paidBy, splitsJson, createdAt);
+  return immediate(targetDb, () => {
+    try {
+      const info = targetDb
+        .prepare(
+          `INSERT INTO expenses (group_id, description, amount, paid_by, splits, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)`
+        )
+        .run(groupId, description, amount, paidBy, splitsJson, createdAt);
 
-    return {
-      id: info.lastInsertRowid,
-      description,
-      amount,
-      paidBy,
-      splits: typeof splits === "string" ? JSON.parse(splits) : splits,
-      createdAt,
-    };
-  } catch (err) {
-    const domainErr = translateSqliteError(err);
-    if (domainErr) throw domainErr;
-    throw err;
-  }
+      return {
+        id: Number(info.lastInsertRowid),
+        description,
+        amount,
+        paidBy,
+        splits: typeof splits === "string" ? JSON.parse(splits) : splits,
+        createdAt,
+      };
+    } catch (err) {
+      const domainErr = translateSqliteError(err);
+      if (domainErr) throw domainErr;
+      throw err;
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -160,23 +180,25 @@ function createExpense(
 // ---------------------------------------------------------------------------
 
 function listExpensesByGroup(groupId, targetDb = db) {
-  const rows = targetDb
-    .prepare(
-      `SELECT id, description, amount, paid_by AS paidBy, splits, created_at AS createdAt
-       FROM expenses
-       WHERE group_id = ?
-       ORDER BY id ASC`
-    )
-    .all(groupId);
+  return readTransaction(targetDb, () => {
+    const rows = targetDb
+      .prepare(
+        `SELECT id, description, amount, paid_by AS paidBy, splits, created_at AS createdAt
+         FROM expenses
+         WHERE group_id = ?
+         ORDER BY id ASC`
+      )
+      .all(groupId);
 
-  return rows.map((r) => ({
-    id: r.id,
-    description: r.description,
-    amount: r.amount,
-    paidBy: r.paidBy,
-    splits: JSON.parse(r.splits),
-    createdAt: r.createdAt,
-  }));
+    return rows.map((r) => ({
+      id: r.id,
+      description: r.description,
+      amount: r.amount,
+      paidBy: r.paidBy,
+      splits: JSON.parse(r.splits),
+      createdAt: r.createdAt,
+    }));
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -184,11 +206,13 @@ function listExpensesByGroup(groupId, targetDb = db) {
 // ---------------------------------------------------------------------------
 
 function deleteExpense(groupId, expenseId, targetDb = db) {
-  const info = targetDb
-    .prepare("DELETE FROM expenses WHERE id = ? AND group_id = ?")
-    .run(expenseId, groupId);
+  return immediate(targetDb, () => {
+    const info = targetDb
+      .prepare("DELETE FROM expenses WHERE id = ? AND group_id = ?")
+      .run(expenseId, groupId);
 
-  return info.changes > 0;
+    return info.changes > 0;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -196,26 +220,28 @@ function deleteExpense(groupId, expenseId, targetDb = db) {
 // ---------------------------------------------------------------------------
 
 function createPayment({ groupId, from, to, amount, createdAt }, targetDb = db) {
-  try {
-    const info = targetDb
-      .prepare(
-        `INSERT INTO payments (group_id, from_member, to_member, amount, created_at)
-         VALUES (?, ?, ?, ?, ?)`
-      )
-      .run(groupId, from, to, amount, createdAt);
+  return immediate(targetDb, () => {
+    try {
+      const info = targetDb
+        .prepare(
+          `INSERT INTO payments (group_id, from_member, to_member, amount, created_at)
+           VALUES (?, ?, ?, ?, ?)`
+        )
+        .run(groupId, from, to, amount, createdAt);
 
-    return {
-      id: info.lastInsertRowid,
-      from,
-      to,
-      amount,
-      createdAt,
-    };
-  } catch (err) {
-    const domainErr = translateSqliteError(err);
-    if (domainErr) throw domainErr;
-    throw err;
-  }
+      return {
+        id: Number(info.lastInsertRowid),
+        from,
+        to,
+        amount,
+        createdAt,
+      };
+    } catch (err) {
+      const domainErr = translateSqliteError(err);
+      if (domainErr) throw domainErr;
+      throw err;
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -223,14 +249,16 @@ function createPayment({ groupId, from, to, amount, createdAt }, targetDb = db) 
 // ---------------------------------------------------------------------------
 
 function listPaymentsByGroup(groupId, targetDb = db) {
-  return targetDb
-    .prepare(
-      `SELECT id, from_member AS "from", to_member AS "to", amount, created_at AS createdAt
-       FROM payments
-       WHERE group_id = ?
-       ORDER BY id ASC`
-    )
-    .all(groupId);
+  return readTransaction(targetDb, () => {
+    return targetDb
+      .prepare(
+        `SELECT id, from_member AS "from", to_member AS "to", amount, created_at AS createdAt
+         FROM payments
+         WHERE group_id = ?
+         ORDER BY id ASC`
+      )
+      .all(groupId);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -238,24 +266,26 @@ function listPaymentsByGroup(groupId, targetDb = db) {
 // ---------------------------------------------------------------------------
 
 function getGroupLedger(groupId, targetDb = db) {
-  const group = targetDb
-    .prepare("SELECT id, name FROM groups WHERE id = ?")
-    .get(groupId);
+  return readTransaction(targetDb, () => {
+    const group = targetDb
+      .prepare("SELECT id, name FROM groups WHERE id = ?")
+      .get(groupId);
 
-  if (!group) return null;
+    if (!group) return null;
 
-  const members = targetDb
-    .prepare("SELECT id, name FROM members WHERE group_id = ? ORDER BY id ASC")
-    .all(groupId);
+    const members = targetDb
+      .prepare("SELECT id, name FROM members WHERE group_id = ? ORDER BY id ASC")
+      .all(groupId);
 
-  const expenses = listExpensesByGroup(groupId, targetDb);
-  const payments = listPaymentsByGroup(groupId, targetDb);
+    const expenses = listExpensesByGroup(groupId, targetDb);
+    const payments = listPaymentsByGroup(groupId, targetDb);
 
-  return { group, members, expenses, payments };
+    return { group, members, expenses, payments };
+  });
 }
 
 // ---------------------------------------------------------------------------
-// Exports
+// Module Exports
 // ---------------------------------------------------------------------------
 
 module.exports = {

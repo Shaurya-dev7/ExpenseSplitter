@@ -1,14 +1,14 @@
 /**
  * Lightweight domain errors for the database layer.
- * Maps low-level SQLite constraint failures to predictable codes
- * that controllers can translate into HTTP responses.
+ * Maps low-level SQLite constraint failures to clean, predictable domain errors
+ * with standard HTTP status codes, preventing database internals from leaking.
  */
 
 class DatabaseError extends Error {
   /**
-   * @param {string} message  - Human-readable description.
-   * @param {string} code     - Machine-readable error code.
-   * @param {number} statusCode - Suggested HTTP status code.
+   * @param {string} message - Human-readable description.
+   * @param {string} code - Machine-readable error code.
+   * @param {number} statusCode - Corresponding HTTP status code.
    */
   constructor(message, code, statusCode) {
     super(message);
@@ -27,7 +27,7 @@ function groupNotFound(groupId) {
   );
 }
 
-/** Expense does not exist (or does not belong to the group). */
+/** Expense does not exist or does not belong to group. */
 function expenseNotFound(expenseId) {
   return new DatabaseError(
     `Expense '${expenseId}' not found`,
@@ -36,10 +36,12 @@ function expenseNotFound(expenseId) {
   );
 }
 
-/** Case-insensitive duplicate member name within a group. */
+/** Case-insensitive duplicate member name within group. */
 function duplicateMember(name) {
   return new DatabaseError(
-    `Member '${name}' already exists in this group`,
+    name
+      ? `Member '${name}' already exists in this group`
+      : "Member name already exists in this group",
     "DUPLICATE_MEMBER",
     409
   );
@@ -54,36 +56,76 @@ function memberLimitExceeded() {
   );
 }
 
-/** Foreign key or reference constraint violation. */
+/** Foreign key or relational reference violation. */
 function invalidReference(detail) {
   return new DatabaseError(
-    detail || "Invalid reference",
+    detail || "Referenced entity does not exist",
     "INVALID_REFERENCE",
     400
   );
 }
 
+/** Check constraint violation. */
+function checkConstraintFailed(detail) {
+  return new DatabaseError(
+    detail || "Value violates database validation constraints",
+    "CHECK_CONSTRAINT_FAILED",
+    400
+  );
+}
+
+/** Database locked or busy timeout exceeded. */
+function databaseBusy() {
+  return new DatabaseError(
+    "Database is busy, please retry",
+    "DATABASE_BUSY",
+    503
+  );
+}
+
 /**
- * Inspect a raw better-sqlite3 / SQLite error and return
- * the appropriate DatabaseError, or re-throw if unrecognised.
+ * Inspect a raw better-sqlite3 / SQLite error and map it
+ * to a clean DatabaseError domain instance.
+ * @param {Error} err
+ * @returns {DatabaseError|null}
  */
 function translateSqliteError(err) {
+  if (!err) return null;
   const msg = err.message || "";
+  const code = err.code || "";
 
-  // UNIQUE constraint on members(group_id, name)
-  if (msg.includes("UNIQUE constraint failed: members.group_id, members.name")) {
+  // Duplicate member unique constraint
+  if (
+    msg.includes("UNIQUE constraint failed: members.group_id, members.name") ||
+    (code === "SQLITE_CONSTRAINT_UNIQUE" && msg.includes("members"))
+  ) {
     return duplicateMember("");
   }
-  if (msg.includes("UNIQUE constraint failed")) {
+  if (code === "SQLITE_CONSTRAINT_UNIQUE" || msg.includes("UNIQUE constraint failed")) {
     return duplicateMember("");
   }
 
-  // FOREIGN KEY constraint
-  if (msg.includes("FOREIGN KEY constraint failed")) {
-    return invalidReference("Referenced record does not exist");
+  // Foreign key failure
+  if (
+    code === "SQLITE_CONSTRAINT_FOREIGNKEY" ||
+    msg.includes("FOREIGN KEY constraint failed")
+  ) {
+    return invalidReference("Referenced record does not exist in group");
   }
 
-  // CHECK constraint — could be many things; re-throw as-is
+  // Check constraint failure
+  if (
+    code === "SQLITE_CONSTRAINT_CHECK" ||
+    msg.includes("CHECK constraint failed")
+  ) {
+    return checkConstraintFailed(msg);
+  }
+
+  // Database busy / lock timeout
+  if (code === "SQLITE_BUSY" || msg.includes("database is locked")) {
+    return databaseBusy();
+  }
+
   return null;
 }
 
@@ -94,5 +136,7 @@ module.exports = {
   duplicateMember,
   memberLimitExceeded,
   invalidReference,
+  checkConstraintFailed,
+  databaseBusy,
   translateSqliteError,
 };

@@ -8,48 +8,57 @@ const fs = require("fs");
  * @returns {import("better-sqlite3").Database}
  */
 function createDb(dbPath) {
-  const isMemory = dbPath === ":memory:";
+  const resolvedPath =
+    dbPath ||
+    process.env.DB_PATH ||
+    path.join(__dirname, "../../data", "expenses.db");
+
+  const isMemory = resolvedPath === ":memory:";
 
   if (!isMemory) {
-    const dir = path.dirname(dbPath);
+    const dir = path.dirname(resolvedPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
   }
 
-  const db = new Database(dbPath);
+  const database = new Database(resolvedPath);
 
-  // Mandatory: enforce referential integrity in ALL modes
-  db.pragma("foreign_keys = ON");
+  // Mandatory: enforce referential integrity across all modes
+  database.pragma("foreign_keys = ON");
 
-  // Concurrency: honour busy_timeout instead of failing immediately
-  db.pragma("busy_timeout = 5000");
+  // Concurrency: wait up to 5000ms on lock contention before throwing SQLITE_BUSY
+  database.pragma("busy_timeout = 5000");
 
   if (!isMemory) {
-    // File-mode performance: WAL + relaxed sync
-    db.pragma("journal_mode = WAL");
-    db.pragma("synchronous = NORMAL");
+    // WAL mode for non-blocking concurrent reads and writes
+    database.pragma("journal_mode = WAL");
+    database.pragma("synchronous = NORMAL");
   }
 
-  return db;
+  return database;
 }
 
+// Default singleton used across the application runtime
+const db = createDb();
+
 /**
- * Close a database connection gracefully.
- * @param {import("better-sqlite3").Database} database
+ * Close a database connection gracefully and idempotently.
+ * @param {import("better-sqlite3").Database} [database]
  */
-function closeDb(database) {
+function closeDb(database = db) {
   if (database && database.open) {
     database.close();
   }
 }
 
-// Default singleton used by the application
-const defaultPath =
-  process.env.DB_PATH ||
-  path.join(__dirname, "../../data", "expenses.db");
-
-const db = createDb(defaultPath);
+// Graceful process shutdown cleanup
+process.once("SIGINT", () => {
+  closeDb(db);
+});
+process.once("SIGTERM", () => {
+  closeDb(db);
+});
 
 module.exports = db;
 module.exports.createDb = createDb;

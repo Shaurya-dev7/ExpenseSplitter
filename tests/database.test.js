@@ -2,11 +2,11 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createDb, closeDb } = require("../src/database/db");
 const { initSchema } = require("../src/database/schema");
-const { DatabaseError } = require("../src/database/errors");
+const { DatabaseError, translateSqliteError } = require("../src/database/errors");
 const repo = require("../src/database/repository");
 
 // ---------------------------------------------------------------------------
-// Helper: fresh :memory: DB per test
+// Helper: fresh isolated :memory: DB per test
 // ---------------------------------------------------------------------------
 
 function freshDb() {
@@ -48,11 +48,27 @@ test("Schema: PRAGMA foreign_keys is ON in :memory: mode", () => {
   closeDb(db);
 });
 
+test("Schema: PRAGMA busy_timeout is set", () => {
+  const db = freshDb();
+  const timeout = db.pragma("busy_timeout", { simple: true });
+  assert.equal(timeout, 5000);
+  closeDb(db);
+});
+
+test("Lifecycle: closeDb handles default db and closed connections idempotently", () => {
+  const db = freshDb();
+  closeDb(db);
+  // Closing an already closed db must not throw
+  assert.doesNotThrow(() => closeDb(db));
+  assert.doesNotThrow(() => closeDb(null));
+  assert.doesNotThrow(() => closeDb(undefined));
+});
+
 // ===================================================================
 // 2. createGroupWithMembers
 // ===================================================================
 
-test("createGroupWithMembers: assigns sequential IDs 1..N", () => {
+test("createGroupWithMembers: assigns sequential IDs 1..N and preserves order", () => {
   const db = freshDb();
   const result = repo.createGroupWithMembers(
     { id: makeGroupId(), name: "Room 204", members: ["Asha", "Ben", "Charlie"], createdAt: TS },
@@ -77,9 +93,22 @@ test("createGroupWithMembers: rolls back entirely on duplicate name (case-insens
       ),
     (err) => err instanceof DatabaseError && err.code === "DUPLICATE_MEMBER"
   );
-  // Group row must NOT exist (transaction rolled back)
+  // Entire transaction must roll back: group row must NOT exist
   const group = repo.getGroupById(gid, db);
   assert.equal(group, null);
+  closeDb(db);
+});
+
+test("createGroupWithMembers: enforces minimum group id length (>= 10 chars)", () => {
+  const db = freshDb();
+  assert.throws(
+    () =>
+      repo.createGroupWithMembers(
+        { id: "short", name: "Short ID Group", members: ["Asha", "Ben"], createdAt: TS },
+        db
+      ),
+    (err) => err instanceof DatabaseError || err.message.includes("CHECK constraint failed")
+  );
   closeDb(db);
 });
 
@@ -87,7 +116,7 @@ test("createGroupWithMembers: rolls back entirely on duplicate name (case-insens
 // 3. Per-group ID isolation
 // ===================================================================
 
-test("Per-group ID isolation: two groups both start member IDs at 1", () => {
+test("Per-group ID isolation: two distinct groups both start member IDs at 1", () => {
   const db = freshDb();
   const g1 = repo.createGroupWithMembers(
     { id: makeGroupId(1), name: "Group A", members: ["Alice", "Bob"], createdAt: TS },
@@ -163,11 +192,10 @@ test("addMember: enforces 20-member hard cap", () => {
     { id: gid, name: "Big Group", members: names.slice(0, 2), createdAt: TS },
     db
   );
-  // Add 18 more to reach exactly 20
   for (let i = 2; i < 20; i++) {
     repo.addMember(gid, names[i], db);
   }
-  // 21st must fail
+  // 21st member must fail
   assert.throws(
     () => repo.addMember(gid, "TooMany", db),
     (err) => err instanceof DatabaseError && err.code === "MEMBER_LIMIT_EXCEEDED"
@@ -266,7 +294,7 @@ test("expenses: rejects zero amount", () => {
   closeDb(db);
 });
 
-test("expenses: rejects amount > 1 billion", () => {
+test("expenses: rejects amount > 1 billion paise", () => {
   const db = freshDb();
   const gid = makeGroupId();
   repo.createGroupWithMembers(
@@ -289,7 +317,7 @@ test("expenses: rejects amount > 1 billion", () => {
   closeDb(db);
 });
 
-test("expenses: preserves historical splits after adding a new member", () => {
+test("expenses: preserves historical splits unchanged after adding new members", () => {
   const db = freshDb();
   const gid = makeGroupId();
   repo.createGroupWithMembers(
@@ -307,10 +335,10 @@ test("expenses: preserves historical splits after adding a new member", () => {
     },
     db
   );
-  // Add a third member
+  // Add a third member later
   repo.addMember(gid, "C", db);
 
-  // Historical split must NOT change
+  // Historical split must remain intact
   const list = repo.listExpensesByGroup(gid, db);
   assert.deepEqual(list[0].splits, { "1": 500, "2": 500 });
   closeDb(db);
@@ -340,11 +368,11 @@ test("expenses: scoped deleteExpense — cannot delete another group's expense",
     db
   );
 
-  // Try to delete from wrong group
+  // Attempting to delete with wrong group must return false
   const deleted = repo.deleteExpense(gidB, exp.id, db);
   assert.equal(deleted, false);
 
-  // Correct group works
+  // Deleting with correct group succeeds
   const deleted2 = repo.deleteExpense(gidA, exp.id, db);
   assert.equal(deleted2, true);
   closeDb(db);
@@ -375,7 +403,7 @@ test("payments: records valid integer paise payment", () => {
   closeDb(db);
 });
 
-test("payments: rejects from === to via DB CHECK", () => {
+test("payments: rejects from === to via DB CHECK constraint", () => {
   const db = freshDb();
   const gid = makeGroupId();
   repo.createGroupWithMembers(
@@ -430,10 +458,10 @@ test("payments: rejects non-existent member foreign keys", () => {
 });
 
 // ===================================================================
-// 7. getGroupLedger
+// 7. getGroupLedger & Read Transaction Snapshot Consistency
 // ===================================================================
 
-test("getGroupLedger: returns consistent members, expenses, and payments", () => {
+test("getGroupLedger: returns consistent members, expenses, and payments in single snapshot", () => {
   const db = freshDb();
   const gid = makeGroupId();
   repo.createGroupWithMembers(
@@ -460,7 +488,7 @@ test("getGroupLedger: returns consistent members, expenses, and payments", () =>
   assert.ok(ledger);
   assert.equal(ledger.group.name, "Ledger Group");
   assert.equal(ledger.members.length, 3);
-  assert.equal(ledger.members[0].id, 1); // ordered by id ASC
+  assert.equal(ledger.members[0].id, 1);
   assert.equal(ledger.expenses.length, 1);
   assert.deepEqual(ledger.expenses[0].splits, { "1": 1000, "2": 1000, "3": 1000 });
   assert.equal(ledger.payments.length, 1);
@@ -473,4 +501,24 @@ test("getGroupLedger: returns null for non-existent group", () => {
   const result = repo.getGroupLedger("does_not_exist_1234", db);
   assert.equal(result, null);
   closeDb(db);
+});
+
+// ===================================================================
+// 8. Error Translation
+// ===================================================================
+
+test("Error Translation: translates SQLite error codes to domain DatabaseError", () => {
+  const checkErr = translateSqliteError({ code: "SQLITE_CONSTRAINT_CHECK", message: "CHECK constraint failed" });
+  assert.equal(checkErr.code, "CHECK_CONSTRAINT_FAILED");
+  assert.equal(checkErr.statusCode, 400);
+
+  const busyErr = translateSqliteError({ code: "SQLITE_BUSY", message: "database is locked" });
+  assert.equal(busyErr.code, "DATABASE_BUSY");
+  assert.equal(busyErr.statusCode, 503);
+
+  const fkErr = translateSqliteError({ code: "SQLITE_CONSTRAINT_FOREIGNKEY", message: "FOREIGN KEY constraint failed" });
+  assert.equal(fkErr.code, "INVALID_REFERENCE");
+  assert.equal(fkErr.statusCode, 400);
+
+  assert.equal(translateSqliteError(null), null);
 });
