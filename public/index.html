@@ -1,459 +1,741 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="is-landing">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
-  <meta name="description" content="Phone-first zero-auth group expense splitter with exact integer math and fewest payments settlement algorithm.">
-  <title>SplitFair — Group Expense Splitter</title>
-  <link rel="stylesheet" href="/css/style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FairShare — Your group trip, we will split.</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0B0D10">
+
+  <!-- Google Fonts: Plus Jakarta Sans + Minecraft + Press Start 2P + JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/css/style.css?v=2.2.0">
 </head>
-<body>
-  <!-- Offline Notification Banner -->
-  <div id="offline-banner" class="offline-banner hidden" role="alert" aria-live="assertive">
-    <span class="offline-icon" aria-hidden="true">⚠️</span>
-    <span>You are currently offline. Changes cannot be saved until reconnected.</span>
-  </div>
+<body class="view-landing is-landing">
+  <!-- Retro CRT Scanline Screen Overlay (Toggleable) -->
+  <div class="retro-scanlines" aria-hidden="true"></div>
 
-  <!-- Global App Shell -->
-  <div id="app" class="app-container">
+  <!-- SCREEN 1: ANIMATED TRIP LANDING PAGE (#landing-view) -->
+  <section id="landing-view" class="landing-view" aria-label="Welcome to FairShare">
+    <!-- 1. Background Art Layer: Full-bleed illustration matching reference mockup -->
+    <div class="landing-art-wrapper" aria-hidden="true">
+      <picture class="landing-art-picture">
+        <source srcset="/landing_art_clean.webp" type="image/webp">
+        <img src="/landing_art_clean.png" alt="FairShare squad traveling together overlooking city at night" class="landing-art-img" width="1024" height="588" fetchpriority="high">
+      </picture>
+    </div>
 
-    <!-- Global App Header -->
-    <header class="app-header">
-      <div class="header-content">
-        <a href="#/" class="brand-link" id="brand-link" title="Go to SplitFair Home">
-          <span class="brand-icon" aria-hidden="true">⚡</span>
-          <div class="brand-text">
-            <h1 class="brand-title">SplitFair</h1>
-            <span class="brand-badge">Fewest Payments (C4)</span>
-          </div>
+    <!-- 2. Landing Topbar Header (Exact match to reference mockup) -->
+    <header class="landing-header">
+      <div class="landing-header-inner">
+        <a href="/" class="landing-brand" id="landing-brand-link">
+          <span class="brand-star">★</span> fairshare
         </a>
-        <div id="header-actions" class="header-actions hidden">
-          <button id="btn-share-link" type="button" class="btn btn-secondary btn-sm" title="Share group link" aria-label="Share group link">
-            <span class="icon" aria-hidden="true">🔗</span> <span class="btn-label">Share</span>
+        <nav class="landing-nav" aria-label="Landing navigation">
+          <button type="button" id="landing-how-btn" class="landing-nav-link">
+            How it works
           </button>
-          <button id="btn-share-whatsapp" type="button" class="btn btn-whatsapp btn-sm" title="Share via WhatsApp" aria-label="Share via WhatsApp">
-            <span class="icon" aria-hidden="true">💬</span> <span class="btn-label">WhatsApp</span>
+          <button type="button" id="landing-login-btn" class="landing-auth-btn">
+            Log in / Sign up
+          </button>
+          <button type="button" id="landing-ai-btn" class="landing-ai-btn">
+            <span class="ai-sparkle">✨</span> AI
+          </button>
+        </nav>
+      </div>
+    </header>
+
+    <!-- 3. Kinetic Hero Content (Exact match to reference mockup) -->
+    <div class="landing-hero-overlay">
+      <div class="landing-hero-container">
+        <h1 class="landing-title">
+          <span>Your group trip,</span>
+          <span class="text-accent-yellow">we will split.</span>
+        </h1>
+        <p class="landing-subtitle">
+          Track every rupee, settle in the fewest payments.
+        </p>
+
+        <!-- Unauthenticated Call to Action Row -->
+        <div id="landing-unauth-actions" class="landing-actions">
+          <button type="button" id="landing-get-started-btn" class="landing-btn landing-btn-primary">
+            Get Started →
+          </button>
+          <button type="button" id="landing-guest-btn" class="landing-btn landing-btn-secondary">
+            Continue as Guest
+          </button>
+          <button type="button" id="landing-skip-btn" class="landing-skip-link">
+            Skip
+          </button>
+        </div>
+
+        <!-- Authenticated Splash Progress Bar -->
+        <div id="landing-auth-splash" class="landing-auth-splash" style="display:none;" aria-live="polite">
+          <div class="welcome-pill">
+            <span>👋</span> <span id="landing-welcome-user">Welcome back</span>
+          </div>
+          <div class="splash-progress-track">
+            <div id="splash-progress-bar" class="splash-progress-fill"></div>
+          </div>
+          <span class="splash-progress-text">Loading your personal dashboard…</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCREEN 2: DEDICATED LOGIN & SIGN-UP PAGE (#auth-view) -->
+  <section id="auth-view" class="auth-view" aria-label="Sign In or Create Account" style="display: none !important;" hidden>
+    <header class="auth-view-header">
+      <div class="auth-header-inner">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <a href="/" class="auth-brand" id="auth-brand-link">
+            <span class="brand-star">★</span> fairshare
+          </a>
+          <span class="arcade-hud-status"><span class="hud-blink-dot">●</span> 1P READY</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="auth-view-container">
+      <!-- Left Column: Editorial Travel Highlights (>= 960px) -->
+      <div class="auth-editorial-panel">
+        <div class="auth-editorial-badge">
+          <span>✦</span> RETRO TRAVEL SQUAD <span>✦</span>
+        </div>
+        <h2 class="auth-editorial-title">
+          Settle your trips with zero drama.
+        </h2>
+        <p class="auth-editorial-desc">
+          One link for your entire travel crew. Record beach dinners, cabs, and Airbnb costs with exact paise math, settled in the absolute fewest payments.
+        </p>
+
+        <div class="auth-perks-list">
+          <div class="auth-perk-card">
+            <span class="auth-perk-icon">✈️</span>
+            <div>
+              <strong>Built for Trips & Rooms</strong>
+              <p>Share a link or 16-char code. Anyone with access can view and add expenses instantly.</p>
+            </div>
+          </div>
+          <div class="auth-perk-card">
+            <span class="auth-perk-icon">🪙</span>
+            <div>
+              <strong>Exact-Paise Arithmetic</strong>
+              <p>Hare-Niemeyer largest-remainder allocation eliminates floating-point penny loss forever.</p>
+            </div>
+          </div>
+          <div class="auth-perk-card">
+            <span class="auth-perk-icon">⚡</span>
+            <div>
+              <strong>Fewest Payments (Problem C4)</strong>
+              <p>Greedy bilateral minimization cuts mutual IOUs down to at most k − 1 settlement transfers.</p>
+            </div>
+          </div>
+          <div class="auth-perk-card">
+            <span class="auth-perk-icon">🤖</span>
+            <div>
+              <strong>FairShare AI Assistant</strong>
+              <p>Ask in plain English: "Who owes money for seafood dinner?" with full group context.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Elevated Auth Card -->
+      <div class="auth-card-panel">
+        <div class="auth-card">
+          <!-- Segmented Pill Toggle Switcher -->
+          <div class="auth-mode-switch" role="tablist">
+            <button type="button" id="tab-login" class="auth-tab-pill active" role="tab" aria-selected="true">
+              Log in
+            </button>
+            <button type="button" id="tab-register" class="auth-tab-pill" role="tab" aria-selected="false">
+              Sign up
+            </button>
+          </div>
+
+          <div id="auth-error-box" class="form-error auth-alert" hidden></div>
+          <div id="auth-success-box" class="auth-success-box auth-alert" hidden></div>
+
+          <!-- Log In Form -->
+          <form id="auth-login-form" class="auth-form-card">
+            <div class="field">
+              <label for="login-identifier">Email or @Username</label>
+              <input type="text" id="login-identifier" placeholder="e.g. alex@example.com or alex4821" autocomplete="username" required>
+            </div>
+            <div class="field">
+              <div class="field-label-row">
+                <label for="login-password">Password</label>
+                <button type="button" id="toggle-login-pass-btn" class="toggle-pass-btn" aria-label="Toggle password visibility">👁 Show</button>
+              </div>
+              <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" required>
+            </div>
+            <button type="submit" id="auth-login-submit-btn" class="button primary auth-submit-btn">
+              Log in ➔
+            </button>
+          </form>
+
+          <!-- Sign Up Form -->
+          <form id="auth-register-form" class="auth-form-card" style="display:none;">
+            <div class="field">
+              <label for="reg-name">Full Name <span class="req-star">*</span></label>
+              <input type="text" id="reg-name" placeholder="e.g. Alex Rivera" maxlength="80" autocomplete="name" required>
+              <span id="err-reg-name" class="field-error" hidden></span>
+            </div>
+            <div class="field">
+              <label for="reg-username">Username <span class="req-star">*</span></label>
+              <div class="input-with-status">
+                <span class="input-prefix">@</span>
+                <input type="text" id="reg-username" placeholder="alex_rivera" maxlength="30" autocomplete="username" spellcheck="false" required>
+                <span id="reg-username-status" class="username-status-indicator" hidden></span>
+              </div>
+              <span id="err-reg-username" class="field-error" hidden></span>
+              <small id="reg-username-hint" class="field-hint">Auto-assigned from email prefix or custom 3–30 chars.</small>
+            </div>
+            <div class="field">
+              <label for="reg-email">Email address <span class="req-star">*</span></label>
+              <input type="email" id="reg-email" placeholder="e.g. alex@example.com" maxlength="120" autocomplete="email" required>
+              <span id="err-reg-email" class="field-error" hidden></span>
+            </div>
+            <div class="field">
+              <div class="field-label-row">
+                <label for="reg-password">Password <span class="req-star">*</span></label>
+                <button type="button" id="toggle-reg-pass-btn" class="toggle-pass-btn" aria-label="Toggle password visibility">👁 Show</button>
+              </div>
+              <input type="password" id="reg-password" placeholder="At least 8 chars with 1 letter & 1 digit" autocomplete="new-password" required>
+              <span id="err-reg-password" class="field-error" hidden></span>
+            </div>
+            <button type="submit" id="auth-register-submit-btn" class="button primary auth-submit-btn">
+              Create account ➔
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCREEN 3: AUTHENTICATED HOME DASHBOARD (#dashboard-view) -->
+  <main id="dashboard-view" class="dashboard-view" style="display: none !important;" hidden>
+    <!-- Single-State Sticky Top Navbar -->
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <a href="/" class="brand" id="dashboard-brand-link">
+            <span class="brand-star">★</span> fairshare
+          </a>
+          <span class="arcade-hud-status"><span class="hud-blink-dot">●</span> 1P ONLINE</span>
+        </div>
+        <div class="topbar-right">
+          <button type="button" id="dash-new-group-btn" class="button primary" style="min-height:44px; padding:0 14px;">
+            ＋ New Group
+          </button>
+          <button type="button" id="dash-join-group-btn" class="button secondary" style="min-height:44px; padding:0 14px;">
+            Join Group
+          </button>
+          <div class="auth-user-bar">
+            <button type="button" id="dashboard-username-pill" class="auth-username-badge" title="Click to copy username" aria-label="Copy your username">
+              <span class="auth-badge-at">@</span><span id="dashboard-username-text">username</span>
+              <span class="auth-copy-icon">📋</span>
+            </button>
+            <button type="button" id="dashboard-logout-btn" class="button secondary auth-logout-btn" aria-label="Log out of account">
+              Log out
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Dashboard Container -->
+    <div class="main-container">
+      <!-- Hero Personal Finance Section -->
+      <section class="personal-finance-hero">
+        <div class="personal-hero-top">
+          <div>
+            <div class="personal-hero-badge">
+              <span>✦</span> PERSONAL FINANCE OVERVIEW <span>✦</span>
+            </div>
+            <h1 class="personal-greeting">
+              Welcome back, <span id="dash-user-name">Traveler</span>
+              <span class="greeting-user-pill" id="dash-user-badge">@username</span>
+            </h1>
+            <p class="personal-subtext">Here is your exact financial balance across all shared trip groups.</p>
+          </div>
+          <div class="hero-quick-actions">
+            <button type="button" id="ask-ai-create-btn" class="button secondary" style="min-height:44px;">
+              ✨ Ask AI to create group
+            </button>
+          </div>
+        </div>
+
+        <!-- 4 Executive KPI Metric Cards -->
+        <div class="kpi-metrics-grid">
+          <!-- Card 1: Total Spent -->
+          <div class="kpi-card">
+            <div class="kpi-card-label">
+              <span>YOU SPENT (PAID)</span>
+              <span class="kpi-icon">💳</span>
+            </div>
+            <div id="kpi-total-paid" class="kpi-value tabular-num">₹0.00</div>
+            <div class="kpi-detail">Total amount you personally paid</div>
+          </div>
+
+          <!-- Card 2: Net Balance -->
+          <div class="kpi-card" id="kpi-net-balance-card">
+            <div class="kpi-card-label">
+              <span>YOUR NET BALANCE</span>
+              <span class="kpi-icon">⚖️</span>
+            </div>
+            <div id="kpi-net-balance" class="kpi-value tabular-num">₹0.00</div>
+            <div id="kpi-net-sub" class="kpi-detail">All settled up</div>
+          </div>
+
+          <!-- Card 3: To Receive / To Pay -->
+          <div class="kpi-card">
+            <div class="kpi-card-label">
+              <span>TO RECEIVE / TO PAY</span>
+              <span class="kpi-icon">🔄</span>
+            </div>
+            <div class="kpi-split-row">
+              <span class="split-col gets-back">
+                <small>Gets back</small>
+                <strong id="kpi-to-receive" class="tabular-num">₹0.00</strong>
+              </span>
+              <span class="split-divider">|</span>
+              <span class="split-col owes">
+                <small>Owes</small>
+                <strong id="kpi-to-pay" class="tabular-num">₹0.00</strong>
+              </span>
+            </div>
+            <div class="kpi-detail">Unsettled peer-to-peer transfers</div>
+          </div>
+
+          <!-- Card 4: Active Groups -->
+          <div class="kpi-card">
+            <div class="kpi-card-label">
+              <span>ACTIVE GROUPS</span>
+              <span class="kpi-icon">🌴</span>
+            </div>
+            <div id="kpi-active-groups" class="kpi-value tabular-num">0</div>
+            <div class="kpi-detail">
+              <span id="kpi-unsettled-badge" class="unsettled-badge">0 unsettled</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Premium Group Cards Grid -->
+      <section class="dashboard-groups-section">
+        <div class="groups-header-row">
+          <div>
+            <h2>Your Groups</h2>
+            <p>Trip and apartment groups you belong to.</p>
+          </div>
+          <!-- Filter Controls -->
+          <div class="group-filter-pills" role="radiogroup" aria-label="Filter groups">
+            <button type="button" class="filter-pill active" data-status-filter="active" id="filter-status-active">Active (<span id="filter-active-count">0</span>)</button>
+            <button type="button" class="filter-pill" data-status-filter="inactive" id="filter-status-inactive">Inactive (<span id="filter-inactive-count">0</span>)</button>
+            <button type="button" class="filter-pill" data-status-filter="all" id="filter-status-all">All (<span id="filter-all-count">0</span>)</button>
+            <span class="filter-separator" aria-hidden="true">|</span>
+            <button type="button" class="filter-pill active" data-filter="all">All Debt</button>
+            <button type="button" class="filter-pill" data-filter="owes">You Owe</button>
+            <button type="button" class="filter-pill" data-filter="owed">Gets Back</button>
+            <button type="button" class="filter-pill" data-filter="settled">Settled</button>
+          </div>
+        </div>
+
+        <div id="dashboard-groups-grid" class="dashboard-groups-grid">
+          <!-- Dynamically populated group cards -->
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- SCREEN 4: GROUP DETAIL WORKSPACE (#group-view) -->
+  <main id="group-view" class="group-view" style="display: none !important;" hidden>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <a href="/" class="brand" id="group-brand-link">
+            <span class="brand-star">★</span> fairshare
+          </a>
+          <span class="arcade-hud-status"><span class="hud-blink-dot">●</span> CO-OP PLAY</span>
+        </div>
+        <nav class="desktop-nav" aria-label="Group navigation">
+          <button type="button" id="group-back-btn" class="button secondary">
+            ← Dashboard
+          </button>
+        </nav>
+        <div class="topbar-right">
+          <button type="button" id="group-status-toggle" class="retro-switch active" role="switch" aria-checked="true" aria-label="Toggle group active status" title="Click to toggle group Active / Inactive" style="min-height:44px;">
+            <span id="group-status-toggle-label" class="retro-switch-label">ACTIVE</span>
+            <span class="retro-switch-thumb"></span>
+          </button>
+          <button type="button" id="group-share-btn" class="button secondary" style="min-height:44px;">
+            📤 Share
+          </button>
+          <button type="button" id="group-add-expense-btn" class="button primary" style="min-height:44px;">
+            ＋ Add Expense
           </button>
         </div>
       </div>
     </header>
 
-    <!-- Main Content Area (SPA Views) -->
-    <main id="main-content" class="main-content">
+    <div class="main-container">
+      <!-- Breadcrumb & Group Heading -->
+      <div class="breadcrumb">
+        <button type="button" id="breadcrumb-dash-link" class="breadcrumb-btn">‹ Dashboard</button>
+        <span>›</span>
+        <span id="breadcrumb-group-title">Trip</span>
+      </div>
 
-      <!-- ======================================================== -->
-      <!-- SCREEN 1: HOME VIEW (#/)                                 -->
-      <!-- ======================================================== -->
-      <section id="view-home" class="view" aria-label="Home and group creation view">
-        <div class="hero-section">
-          <h2 class="hero-title">Split bills without the friction.</h2>
-          <p class="hero-desc">Zero signups. Phone-first. Exact integer paise math. Fewest payment settlements.</p>
+      <!-- Inactive Group Read-Only Banner -->
+      <div id="group-inactive-banner" class="inactive-group-banner" style="display:none;" role="alert">
+        <span class="banner-icon">⚠️</span>
+        <div class="banner-text">
+          <strong>This group is Inactive (Read-Only)</strong>
+          <p>Reactivate this group to record new expenses, add members, or settle debts.</p>
         </div>
+        <button type="button" id="banner-reactivate-btn" class="button primary" style="min-height:44px;">Reactivate</button>
+      </div>
 
-        <!-- Create Group Card -->
-        <div class="card create-group-card">
-          <div class="card-header">
-            <h3 class="card-title">Create a New Group</h3>
-            <span id="member-counter-badge" class="badge badge-neutral">2/20 members</span>
+      <section class="group-heading">
+        <div>
+          <div class="group-kicker">
+            <span class="trip-label">🌴 THE SHARED LIFE</span>
+            <span class="private-label">🔗 Protected group access</span>
           </div>
-          <form id="form-create-group" class="form-flow" novalidate>
-            <div class="form-group">
-              <label for="input-group-name" class="form-label">Group Name <span class="req">*</span></label>
-              <input
-                type="text"
-                id="input-group-name"
-                name="groupName"
-                class="form-input"
-                placeholder="e.g. Goa Trip 2026, Flat 402, Dinner Out"
-                maxlength="60"
-                required
-                autocomplete="off"
-              >
-              <span class="field-error" id="error-group-name" role="alert" aria-live="polite"></span>
-            </div>
-
-            <div class="form-group">
-              <div class="form-label-row">
-                <span class="form-label">Members <span class="req">*</span> (min 2, max 20)</span>
-                <button type="button" id="btn-add-member-field" class="btn-inline-action" title="Add another member">
-                  + Add Member
-                </button>
-              </div>
-              <div id="member-inputs-list" class="member-inputs-list">
-                <!-- Member rows dynamically injected here -->
-              </div>
-              <span class="field-error" id="error-members" role="alert" aria-live="polite"></span>
-            </div>
-
-            <button type="submit" id="btn-create-group-submit" class="btn btn-primary btn-block btn-lg">
-              <span class="btn-text">Create Group & Get Link</span>
-              <span class="btn-spinner hidden" aria-hidden="true"></span>
-            </button>
-          </form>
-        </div>
-
-        <!-- Join / Open Existing Group Card -->
-        <div class="card join-group-card">
-          <h3 class="card-title">Open Existing Group</h3>
-          <p class="card-subtitle">Paste a group URL or 16-character group ID</p>
-          <form id="form-join-group" class="join-form" novalidate>
-            <div class="join-input-wrap">
-              <label for="input-join-id" class="sr-only">Group URL or Group ID</label>
-              <input
-                type="text"
-                id="input-join-id"
-                class="form-input"
-                placeholder="e.g. f8X2kL... or full link"
-                autocomplete="off"
-              >
-              <button type="submit" class="btn btn-secondary" id="btn-join-submit">Open</button>
-            </div>
-            <span class="field-error" id="error-join" role="alert" aria-live="polite"></span>
-          </form>
-        </div>
-
-        <!-- Recent Groups Card (Stored in LocalStorage) -->
-        <div id="recent-groups-card" class="card recent-groups-card hidden">
-          <h3 class="card-title">Recent Groups</h3>
-          <div id="recent-groups-list" class="recent-groups-list"></div>
+          <h1 id="group-name-heading">Loading group…</h1>
+          <p>Every rupee, fairly shared with exact-paise math.</p>
         </div>
       </section>
 
+      <!-- Group Code Strip -->
+      <div class="group-code-strip">
+        <button type="button" id="group-copy-code-btn" class="group-code" aria-label="Copy group code">
+          <span>GROUP CODE</span>
+          <code id="group-code-display">...</code>
+          <span>📋</span>
+        </button>
+        <span class="code-strip-desc">Share this code with your friends to join this group.</span>
+      </div>
 
-      <!-- ======================================================== -->
-      <!-- SCREEN 2: GROUP VIEW (#/groups/:gid)                     -->
-      <!-- ======================================================== -->
-      <section id="view-group" class="view hidden" aria-label="Group details view">
-        <!-- Group Header Card -->
-        <div class="group-header-card card">
-          <div class="group-top-row">
-            <button id="btn-back-home" type="button" class="btn-icon-back" title="Back to home" aria-label="Back to home">
-              ←
-            </button>
-            <div class="group-title-wrap">
-              <h2 id="group-title" class="group-title">Loading group...</h2>
-              <div class="group-meta">
-                <button id="group-id-badge" type="button" class="badge badge-outline btn-id-copy" title="Click to copy Group ID" aria-label="Copy group ID">ID</button>
-                <span id="group-member-count" class="badge badge-neutral">0 members</span>
-              </div>
-            </div>
-            <button id="btn-open-add-member" type="button" class="btn btn-secondary btn-sm" title="Add member to group" aria-label="Add member to group">
-              + Member
-            </button>
+      <!-- Group KPI Strip -->
+      <div class="stats-grid" style="margin-bottom:24px;">
+        <div class="stat-card">
+          <div class="stat-label">
+            <span>TOTAL GROUP SPEND</span>
+            <span class="stat-icon">💳</span>
           </div>
-
-          <!-- Members Chip Strip -->
-          <div class="members-chips-container">
-            <span class="members-label">Members:</span>
-            <div id="members-chip-list" class="members-chip-list">
-              <!-- Chips injected here -->
-            </div>
-          </div>
+          <div id="group-total-spend" class="stat-value tabular-num">₹0.00</div>
+          <div class="stat-detail">Across all recorded expenses</div>
         </div>
+        <div class="stat-card">
+          <div class="stat-label">
+            <span>YOUR BALANCE IN GROUP</span>
+            <span class="stat-icon">👤</span>
+          </div>
+          <div id="group-your-balance" class="stat-value tabular-num">₹0.00</div>
+          <div id="group-your-balance-status" class="stat-detail">All settled up</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">
+            <span>UNSETTLED GROUP DEBT</span>
+            <span class="stat-icon">⚖️</span>
+          </div>
+          <div id="group-unsettled-debt" class="stat-value tabular-num">₹0.00</div>
+          <div class="stat-detail">Outstanding to balance zero</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">
+            <span>ACTIVE MEMBERS</span>
+            <span class="stat-icon">👥</span>
+          </div>
+          <div id="group-member-count" class="stat-value tabular-num">0</div>
+          <div class="stat-detail">Participants sharing costs</div>
+        </div>
+      </div>
 
-        <!-- Tab Navigation (Phone-First 3 Tabs) -->
-        <nav class="group-nav-tabs" role="tablist" aria-label="Group sections">
-          <button
-            type="button"
-            class="tab-btn active"
-            id="tab-btn-expenses"
-            data-tab="expenses"
-            role="tab"
-            aria-selected="true"
-            aria-controls="panel-expenses"
-          >
-            <span class="tab-icon" aria-hidden="true">🧾</span>
-            <span class="tab-title">Expenses</span>
-            <span id="tab-badge-expenses" class="tab-badge">0</span>
+      <!-- Ledger Tabs -->
+      <div class="ledger-panel">
+        <div class="tabs" role="tablist">
+          <button type="button" class="tab-btn active" data-tab="expenses" role="tab" aria-selected="true">
+            Expenses <span id="group-expense-count" class="tab-count tabular-num">0</span>
           </button>
-          <button
-            type="button"
-            class="tab-btn"
-            id="tab-btn-balances"
-            data-tab="balances"
-            role="tab"
-            aria-selected="false"
-            aria-controls="panel-balances"
-          >
-            <span class="tab-icon" aria-hidden="true">⚖️</span>
-            <span class="tab-title">Balances</span>
-            <span id="tab-badge-balances" class="tab-badge">0</span>
+          <button type="button" class="tab-btn" data-tab="balances" role="tab" aria-selected="false">
+            Balances
           </button>
-          <button
-            type="button"
-            class="tab-btn"
-            id="tab-btn-settlements"
-            data-tab="settlements"
-            role="tab"
-            aria-selected="false"
-            aria-controls="panel-settlements"
-          >
-            <span class="tab-icon" aria-hidden="true">🤝</span>
-            <span class="tab-title">Settle Up</span>
-            <span id="tab-badge-settlements" class="tab-badge">0</span>
+          <button type="button" class="tab-btn" data-tab="settlements" role="tab" aria-selected="false">
+            Settle up <span class="settle-dot"></span>
           </button>
-        </nav>
+        </div>
 
-        <!-- Tab 1: Expenses Panel -->
-        <div id="panel-expenses" class="tab-panel active" role="tabpanel" aria-labelledby="tab-btn-expenses">
-          <!-- Summary Banner & Action -->
-          <div class="expenses-action-bar">
-            <div class="total-spend-box">
-              <span class="total-spend-label">Total Spend</span>
-              <span id="total-group-spend" class="total-spend-val">₹0.00</span>
+        <!-- Tab 1: Expenses -->
+        <div id="expenses-tab-content">
+          <div class="list-toolbar">
+            <div>
+              <h2>Group expenses</h2>
+              <p class="toolbar-sub">List of all shared costs, oldest first.</p>
             </div>
-            <button id="btn-open-add-expense" type="button" class="btn btn-primary btn-md">
-              <span class="icon" aria-hidden="true">+</span> Add Expense
-            </button>
-          </div>
-
-          <!-- Expenses List Container -->
-          <div id="expenses-list" class="expenses-list">
-            <!-- Expenses or empty state injected dynamically -->
-          </div>
-        </div>
-
-        <!-- Tab 2: Balances Panel -->
-        <div id="panel-balances" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-btn-balances">
-          <div class="balances-header-strip">
-            <span class="balances-subtext">Net balances derived from all expenses and recorded payments.</span>
-            <span id="balance-checksum-badge" class="badge badge-success">Balanced (Σ = ₹0.00)</span>
-          </div>
-          <div id="balances-list" class="balances-list">
-            <!-- Balance cards injected dynamically -->
-          </div>
-        </div>
-
-        <!-- Tab 3: Settle Up Panel -->
-        <div id="panel-settlements" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-btn-settlements">
-          <!-- Approved Extra B: Prominent Settlement Explanation Card -->
-          <div class="settlements-header-strip">
-            <div class="settlements-info">
-              <h3 class="panel-section-title">Fewest Payments Plan</h3>
-              <p class="panel-section-desc">
-                Greedy debt simplification pairs the largest debtor with the largest creditor iteratively, settling the entire group with at most <strong>k &minus; 1</strong> transactions.
-              </p>
-              <div class="settlement-note-banner">
-                <span class="note-icon" aria-hidden="true">ℹ️</span>
-                <span><strong>Important:</strong> Suggested transfers simplify net debts. A transfer is <em>not</em> recorded as settled until marked as paid.</span>
+            <div class="expense-tools">
+              <button type="button" id="export-csv-btn" class="button secondary tool-btn" title="Export expense ledger to CSV">
+                📥 Export CSV
+              </button>
+              <div class="search-box">
+                <span>🔍</span>
+                <input type="text" id="expense-search" placeholder="Search expenses…">
+              </div>
+              <div class="filter-label">
+                <select id="payer-filter" aria-label="Filter by payer">
+                  <option value="all">All payers</option>
+                </select>
               </div>
             </div>
           </div>
-          <div id="settlements-list" class="settlements-list">
-            <!-- Settlement cards or celebratory empty state injected dynamically -->
-          </div>
-        </div>
-      </section>
-
-    </main>
-
-    <!-- ======================================================== -->
-    <!-- MODAL: ADD EXPENSE                                       -->
-    <!-- ======================================================== -->
-    <div id="modal-expense" class="modal-backdrop hidden" aria-hidden="true" role="dialog" aria-labelledby="modal-expense-title">
-      <div class="modal-sheet">
-        <div class="modal-header">
-          <h3 id="modal-expense-title" class="modal-title">Add Expense</h3>
-          <button id="btn-close-expense-modal" type="button" class="btn-close" aria-label="Close modal">&times;</button>
+          <div id="expenses-list-container"></div>
         </div>
 
-        <form id="form-add-expense" class="modal-body form-flow" novalidate>
-          <!-- Description -->
-          <div class="form-group">
-            <label for="input-expense-desc" class="form-label">Description <span class="req">*</span></label>
-            <input
-              type="text"
-              id="input-expense-desc"
-              name="description"
-              class="form-input"
-              placeholder="e.g. Biryani dinner, Uber to airport"
-              maxlength="100"
-              required
-              autocomplete="off"
-            >
-            <span class="field-error" id="error-expense-desc" role="alert" aria-live="polite"></span>
+        <!-- Tab 2: Balances -->
+        <div id="balances-tab-content" hidden>
+          <div class="section-heading">
+            <h2>Member balances</h2>
+            <p class="section-sub">Positive balance = gets back money. Negative balance = owes the group.</p>
           </div>
+          <div id="balances-list-container" class="balance-list"></div>
+        </div>
 
-          <!-- Quick Item Calculator (Approved Extra C) -->
-          <details id="quick-calc-details" class="quick-calc-details">
-            <summary class="quick-calc-summary">
-              <span>🧮 Quick Item Calculator (Sum line items)</span>
-            </summary>
-            <div class="quick-calc-body">
-              <div id="quick-calc-items-list" class="quick-calc-items-list">
-                <!-- Line item rows -->
-              </div>
-              <div class="quick-calc-footer">
-                <button type="button" id="btn-add-calc-item" class="btn-inline-action">+ Add Item Row</button>
-                <div class="calc-total-box">
-                  <span class="calc-total-label">Sum: </span>
-                  <span id="calc-running-total" class="calc-total-val">₹0.00</span>
-                  <button type="button" id="btn-apply-calc-total" class="btn btn-secondary btn-sm">Apply to Amount</button>
-                </div>
-              </div>
-              <span class="field-error" id="error-calc" role="alert" aria-live="polite"></span>
-            </div>
-          </details>
-
-          <!-- Amount & Paid By Grid -->
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="input-expense-amount" class="form-label">Amount (₹) <span class="req">*</span></label>
-              <div class="rupee-input-wrapper">
-                <span class="rupee-symbol" aria-hidden="true">₹</span>
-                <input
-                  type="text"
-                  inputmode="decimal"
-                  id="input-expense-amount"
-                  name="amount"
-                  class="form-input pl-rupee"
-                  placeholder="0.00"
-                  required
-                  autocomplete="off"
-                >
-              </div>
-              <span class="field-error" id="error-expense-amount" role="alert" aria-live="polite"></span>
-            </div>
-
-            <div class="form-group">
-              <label for="select-expense-payer" class="form-label">Paid By <span class="req">*</span></label>
-              <select id="select-expense-payer" name="paidBy" class="form-select" required>
-                <!-- Populated with current group members -->
-              </select>
-              <span class="field-error" id="error-expense-payer" role="alert" aria-live="polite"></span>
-            </div>
+        <!-- Tab 3: Settle Up -->
+        <div id="settlements-tab-content" hidden>
+          <div class="section-heading">
+            <h2>Suggested settlement transfers</h2>
+            <p class="section-sub">Bilateral debt minimization pairs the largest debtor with the largest creditor to settle debts in fewest transfers.</p>
           </div>
+          <div id="settlements-list-container" class="transfer-list"></div>
+        </div>
+      </div>
+    </div>
+  </main>
 
-          <!-- Split Type Segmented Control -->
-          <div class="form-group">
-            <span class="form-label">Split Method</span>
-            <div class="segmented-control" role="radiogroup" aria-label="Split method">
-              <button type="button" class="segment-btn active" data-type="equal" role="radio" aria-checked="true">
-                Equal (=)
-              </button>
-              <button type="button" class="segment-btn" data-type="shares" role="radio" aria-checked="false">
-                Shares (1:2:...)
-              </button>
-              <button type="button" class="segment-btn" data-type="exact" role="radio" aria-checked="false">
-                Exact (₹)
-              </button>
-            </div>
+  <!-- MODALS -->
+  <!-- Modal: Create Group -->
+  <dialog id="create-group-modal" class="modal">
+    <div class="modal-inner">
+      <div class="modal-heading">
+        <div>
+          <span class="trip-label">NEW GROUP</span>
+          <h2>Create a trip group</h2>
+        </div>
+        <button type="button" class="close-btn close-modal" aria-label="Close dialog">✕</button>
+      </div>
+      <div id="create-group-error" class="form-error" hidden></div>
+      <form id="create-group-form">
+        <div class="field">
+          <label for="create-group-name">Group name</label>
+          <input type="text" id="create-group-name" placeholder="e.g. Manali Road Trip or Flat 302" maxlength="60" required>
+        </div>
+        <div class="field">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <label>Members (2 to 20 people)</label>
+            <button type="button" id="add-more-members-btn" class="member-add-text-btn">＋ Add member</button>
           </div>
+          <div id="create-members-container"></div>
+        </div>
+        <button type="submit" class="button primary full-width" style="min-height:44px; margin-top:10px;">
+          Create group ➔
+        </button>
+      </form>
+    </div>
+  </dialog>
 
-          <!-- Dynamic Split Details Container -->
-          <div class="split-config-box">
-            <div class="split-config-header">
-              <span id="split-config-title" class="split-config-title">Split among participants</span>
-              <button type="button" id="btn-toggle-all-participants" class="btn-inline-action">
-                Select All
-              </button>
-            </div>
+  <!-- Modal: Join Group -->
+  <dialog id="join-group-modal" class="modal">
+    <div class="modal-inner">
+      <div class="modal-heading">
+        <div>
+          <span class="trip-label">JOIN GROUP</span>
+          <h2>Open group by code or link</h2>
+        </div>
+        <button type="button" class="close-btn close-modal" aria-label="Close dialog">✕</button>
+      </div>
+      <div id="join-group-error" class="form-error" hidden></div>
+      <form id="join-group-form">
+        <div class="field">
+          <label for="join-group-input">Group Code or Link</label>
+          <input type="text" id="join-group-input" placeholder="Paste 16-character code or link" required>
+        </div>
+        <button type="submit" class="button primary full-width" style="min-height:44px; margin-top:10px;">
+          Open group ➔
+        </button>
+      </form>
+    </div>
+  </dialog>
 
-            <div id="split-participants-container" class="split-participants-container">
-              <!-- Checkboxes, share weight inputs, or exact amount inputs -->
-            </div>
+  <!-- Modal: Add Expense -->
+  <dialog id="add-expense-modal" class="modal">
+    <div class="modal-inner">
+      <div class="modal-heading">
+        <div>
+          <span class="trip-label">EXPENSE RECORD</span>
+          <h2>Add an expense</h2>
+        </div>
+        <button type="button" class="close-btn close-modal" aria-label="Close dialog">✕</button>
+      </div>
+      <div id="expense-form-error" class="form-error" hidden></div>
+      <form id="expense-form">
+        <div class="field">
+          <label for="expense-desc">Description</label>
+          <input type="text" id="expense-desc" placeholder="e.g. Seafood Dinner" maxlength="100" required>
+        </div>
+        <div class="field">
+          <label for="expense-amount">Amount (in Rupees)</label>
+          <input type="text" id="expense-amount" class="tabular-num" placeholder="0.00" required>
+        </div>
+        <div class="field">
+          <label for="expense-paid-by">Paid by</label>
+          <select id="expense-paid-by" required></select>
+        </div>
+        <div class="field">
+          <label>Split type</label>
+          <div class="split-control" role="group" aria-label="Split type">
+            <button type="button" class="split-pill selected" data-type="equal">Equal</button>
+            <button type="button" class="split-pill" data-type="shares">Shares</button>
+            <button type="button" class="split-pill" data-type="exact">Exact (₹)</button>
           </div>
-
-          <!-- Live Split Preview Box (Approved Extra A) -->
-          <div class="live-preview-box">
-            <div class="preview-header">
-              <span class="preview-label">Live Split Preview:</span>
-              <span id="preview-status-pill" class="badge badge-neutral">Enter amount</span>
-            </div>
-            <div id="preview-breakdown-list" class="preview-breakdown-list">
-              <!-- Live preview lines -->
-            </div>
-            <div id="preview-remainder-note" class="preview-remainder-note"></div>
+        </div>
+        <div id="split-config-container"></div>
+        <div class="split-preview">
+          <div class="split-preview-header">
+            <span>⚡ Live split preview (Hare-Niemeyer exact paise):</span>
           </div>
+          <div id="split-preview-list" class="preview-list"></div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="button secondary close-modal">Cancel</button>
+          <button type="submit" class="button primary">Save expense</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
 
-          <!-- Modal Actions -->
-          <div class="modal-footer">
-            <button type="button" id="btn-cancel-expense" class="btn btn-secondary">Cancel</button>
-            <button type="submit" id="btn-save-expense" class="btn btn-primary">
-              <span class="btn-text">Save Expense</span>
-              <span class="btn-spinner hidden" aria-hidden="true"></span>
-            </button>
+  <!-- Modal: Delete Expense -->
+  <dialog id="delete-confirm-modal" class="modal">
+    <div class="modal-inner">
+      <div class="modal-heading">
+        <h2>Delete expense?</h2>
+        <button type="button" class="close-btn close-modal" aria-label="Close dialog">✕</button>
+      </div>
+      <p class="modal-body-text">
+        Are you sure you want to delete <strong id="delete-expense-desc">this expense</strong>? Balances and settlements will be recomputed immediately.
+      </p>
+      <div class="form-actions">
+        <button type="button" id="cancel-delete-btn" class="button secondary">Cancel</button>
+        <button type="button" id="confirm-delete-btn" class="button primary danger-btn">Delete</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Modal: How FairShare Works -->
+  <dialog id="how-it-works-modal" class="modal">
+    <div class="modal-inner" style="max-width: 520px;">
+      <div class="modal-heading">
+        <div>
+          <span class="trip-label">HOW IT WORKS</span>
+          <h2>Settle trips with zero drama</h2>
+        </div>
+        <button type="button" class="close-btn close-modal" aria-label="Close dialog">✕</button>
+      </div>
+      <div class="how-it-works-content" style="display:flex; flex-direction:column; gap:16px; margin: 16px 0 20px;">
+        <div class="auth-perk-card">
+          <span class="auth-perk-icon">✈️</span>
+          <div>
+            <strong>1. Create or Share a Group</strong>
+            <p>One link for your whole squad. No apps to install—anyone with the link can view & add expenses.</p>
           </div>
+        </div>
+        <div class="auth-perk-card">
+          <span class="auth-perk-icon">🪙</span>
+          <div>
+            <strong>2. Split Any Bill Exactly</strong>
+            <p>Equal split, custom shares, or exact rupee amounts. Built with exact integer-paise math so not a single paisa is lost.</p>
+          </div>
+        </div>
+        <div class="auth-perk-card">
+          <span class="auth-perk-icon">⚡</span>
+          <div>
+            <strong>3. Settle in Fewest Payments</strong>
+            <p>Bilateral debt minimization simplifies dozens of messy debts into the absolute minimum number of payments.</p>
+          </div>
+        </div>
+      </div>
+      <button type="button" class="button primary full-width close-modal" style="min-height:44px;">
+        Got it ➔
+      </button>
+    </div>
+  </dialog>
+
+  <!-- Single Context-Aware AI Assistant & Drawer (Mounted only after authentication) -->
+  <div id="ai-chat-root" class="ai-chat-root" style="display:none;">
+    <div id="ai-chat-backdrop" class="ai-chat-backdrop" style="display:none;" aria-hidden="true"></div>
+
+    <button type="button" id="ai-chat-launcher-btn" class="ai-chat-fab" aria-label="Open FairShare AI Assistant" aria-expanded="false" aria-haspopup="dialog">
+      <span class="ai-fab-icon">✦</span>
+      <span class="ai-fab-text">AI Assistant</span>
+    </button>
+
+    <aside id="ai-chat-drawer" class="ai-chat-sidebar" role="dialog" aria-label="FairShare AI Assistant" style="display:none;">
+      <header class="ai-chat-header">
+        <div class="ai-header-title-box">
+          <span class="ai-header-avatar">✦</span>
+          <div>
+            <h3>FairShare AI</h3>
+            <span class="ai-header-status" id="ai-header-status-text"><span class="ai-status-dot"></span> Online &bull; NVIDIA Flash</span>
+          </div>
+        </div>
+        <div class="ai-header-actions">
+          <button type="button" id="ai-chat-history-btn" class="ai-action-btn" aria-label="View Chat History" title="Chat History">🕒</button>
+          <button type="button" id="ai-chat-new-btn" class="ai-action-btn" aria-label="Start new conversation" title="New Chat">＋</button>
+          <button type="button" id="ai-chat-close-btn" class="ai-action-btn ai-close-btn" aria-label="Close AI Assistant" title="Close">✕</button>
+        </div>
+      </header>
+
+      <div id="ai-chat-main-view" class="ai-chat-view-container">
+        <div id="ai-chat-messages" class="ai-chat-messages" role="log" aria-live="polite"></div>
+        <div id="ai-voice-status" class="ai-voice-status" style="display:none !important;" aria-live="assertive">
+          <div style="display:flex;align-items:center;">
+            <span class="voice-pulse-dot"></span>
+            <span id="ai-voice-status-text">Listening... (0s / 25s)</span>
+          </div>
+          <button type="button" id="ai-voice-cancel-btn" class="ai-voice-cancel-btn" aria-label="Cancel recording">Cancel</button>
+        </div>
+        <form id="ai-chat-form" class="ai-chat-form">
+          <input type="text" id="ai-chat-input" class="ai-chat-input" placeholder="Ask to split a bill or who owes what…" aria-label="Message FairShare AI" maxlength="400" autocomplete="off" required>
+          <button type="button" id="ai-chat-mic-btn" class="ai-chat-mic-btn" aria-label="Voice input (Hold or tap to speak)" title="Voice Input (English / Hindi / Hinglish)">
+            <span class="mic-icon">🎤</span>
+          </button>
+          <button type="submit" id="ai-chat-send-btn" class="ai-chat-send-btn" aria-label="Send message">
+            <span>Send</span> <span class="send-arrow">➔</span>
+          </button>
         </form>
       </div>
-    </div>
 
-    <!-- ======================================================== -->
-    <!-- MODAL: ADD MEMBER                                        -->
-    <!-- ======================================================== -->
-    <div id="modal-member" class="modal-backdrop hidden" aria-hidden="true" role="dialog" aria-labelledby="modal-member-title">
-      <div class="modal-sheet modal-sm">
-        <div class="modal-header">
-          <h3 id="modal-member-title" class="modal-title">Add Member</h3>
-          <button id="btn-close-member-modal" type="button" class="btn-close" aria-label="Close modal">&times;</button>
+      <div id="ai-chat-history-view" class="ai-chat-history-view" style="display:none;">
+        <div class="ai-history-toolbar">
+          <button type="button" id="ai-history-back-btn" class="ai-history-back-btn">← Back to Chat</button>
+          <span class="ai-history-title">Chat History</span>
+          <button type="button" id="ai-history-clear-btn" class="ai-history-clear-btn" title="Clear all saved chats">Clear</button>
         </div>
-        <form id="form-add-member" class="modal-body form-flow" novalidate>
-          <div class="form-group">
-            <label for="input-new-member-name" class="form-label">Member Name <span class="req">*</span></label>
-            <input
-              type="text"
-              id="input-new-member-name"
-              class="form-input"
-              placeholder="e.g. Priya"
-              maxlength="40"
-              required
-              autocomplete="off"
-            >
-            <span class="field-error" id="error-new-member" role="alert" aria-live="polite"></span>
-          </div>
-          <div class="modal-footer">
-            <button type="button" id="btn-cancel-member" class="btn btn-secondary">Cancel</button>
-            <button type="submit" id="btn-save-member" class="btn btn-primary">
-              <span class="btn-text">Add to Group</span>
-              <span class="btn-spinner hidden" aria-hidden="true"></span>
-            </button>
-          </div>
-        </form>
+        <div id="ai-chat-history-list" class="ai-chat-history-list" role="list"></div>
       </div>
-    </div>
-
-    <!-- ======================================================== -->
-    <!-- MODAL: CONFIRM PAYMENT (SETTLE UP)                       -->
-    <!-- ======================================================== -->
-    <div id="modal-payment" class="modal-backdrop hidden" aria-hidden="true" role="dialog" aria-labelledby="modal-payment-title">
-      <div class="modal-sheet modal-sm">
-        <div class="modal-header">
-          <h3 id="modal-payment-title" class="modal-title">Confirm Settlement Payment</h3>
-          <button id="btn-close-payment-modal" type="button" class="btn-close" aria-label="Close modal">&times;</button>
-        </div>
-        <div class="modal-body">
-          <p id="payment-confirm-desc" class="payment-confirm-desc">Are you sure you want to record this payment?</p>
-          <div class="payment-highlight-card">
-            <div class="transfer-from-to">
-              <span id="payment-from-name" class="name-pill from-pill">Sender</span>
-              <span class="arrow" aria-hidden="true">➔</span>
-              <span id="payment-to-name" class="name-pill to-pill">Receiver</span>
-            </div>
-            <div id="payment-amount-display" class="payment-amount-large">₹0.00</div>
-          </div>
-          <p class="payment-note">This records an immutable payment in SQLite and instantly recalculates all net balances.</p>
-        </div>
-        <div class="modal-footer">
-          <button type="button" id="btn-cancel-payment" class="btn btn-secondary">Cancel</button>
-          <button type="button" id="btn-confirm-payment" class="btn btn-success">
-            <span class="btn-text">Record Payment</span>
-            <span class="btn-spinner hidden" aria-hidden="true"></span>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Toast Notification Container -->
-    <div id="toast-container" class="toast-container" aria-live="polite"></div>
-
+    </aside>
   </div>
 
-  <!-- Vanilla Scripts in Dependency Order (Zero Build Step) -->
-  <script src="/js/money.js"></script>
-  <script src="/js/api.js"></script>
-  <script src="/js/expenses.js"></script>
-  <script src="/js/balances.js"></script>
-  <script src="/js/settlements.js"></script>
-  <script src="/js/app.js"></script>
+  <!-- Toast Notification -->
+  <div id="toast" class="toast" hidden></div>
+
+  <!-- Master ES2020+ Application Orchestrator -->
+  <script type="module" src="/js/app.js?v=2.2.0"></script>
 </body>
 </html>

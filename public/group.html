@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Group Workspace — FairShare</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0B0D10">
+
+  <!-- Google Fonts: Plus Jakarta Sans for UI + JetBrains Mono for Tabular Currency -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/css/style.css?v=25">
+</head>
+<body class="group-page-body">
+  <!-- Retro CRT Scanline Screen Overlay (Toggleable) -->
+  <div class="retro-scanlines" aria-hidden="true"></div>
+
+  <!-- MULTI-PAGE: APP SHELL & GROUP VIEW -->
+  <div id="app-shell" class="app-shell">
+    <!-- Topbar Header -->
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a href="/" class="brand" id="brand-home-link">
+          <span class="brand-star">★</span> fairshare
+        </a>
+        <nav class="desktop-nav" aria-label="Main navigation">
+          <a href="/dashboard" class="button secondary">
+            ‹ All Groups
+          </a>
+          <button type="button" id="how-it-works-btn" class="button secondary">
+            How it works ↗
+          </button>
+        </nav>
+        <div class="topbar-right">
+          <!-- 8-Bit Retro Sound Effects Toggle -->
+          <button type="button" id="retro-sfx-toggle-btn" class="button secondary sfx-toggle-btn" aria-label="Toggle retro 8-bit sound effects" title="Toggle retro 8-bit SFX">
+            <span class="sfx-icon">🔊</span>
+            <span class="sfx-text">SFX ON</span>
+          </button>
+
+          <!-- Single-State Auth Container -->
+          <div id="auth-nav-container" class="auth-nav-container">
+            <a href="/login" id="open-auth-btn" class="button secondary auth-btn">
+              Log in / Sign up
+            </a>
+            <div id="auth-user-bar" class="auth-user-bar" hidden>
+              <button type="button" id="auth-username-badge" class="auth-username-badge" title="Tap to copy username" aria-label="Copy your username">
+                <span class="auth-badge-at">@</span><span id="auth-username-text">username</span>
+                <span class="auth-copy-icon">📋</span>
+              </button>
+              <button type="button" id="auth-logout-btn" class="button secondary auth-logout-btn" aria-label="Log out of account">
+                Log out
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Offline Banner -->
+    <div id="offline-bar" class="offline-bar" hidden>
+      ⚠️ You're offline. Your saved group expenses are safe. Reconnect to sync or record changes.
+    </div>
+
+    <!-- Error Banner -->
+    <div id="error-bar" class="error-bar" hidden></div>
+
+    <!-- Main Content -->
+    <main class="main-container">
+      <div id="group-view" class="group-view">
+        <div class="breadcrumb">
+          <a href="/dashboard" id="back-to-home-btn" class="breadcrumb-btn">‹ All Groups</a>
+          <span>›</span>
+          <span id="breadcrumb-group-name">Trip</span>
+        </div>
+
+        <!-- Inactive Group Read-Only Banner -->
+        <div id="group-inactive-banner" class="inactive-group-banner" style="display:none;" role="alert">
+          <span class="banner-icon">⚠️</span>
+          <div class="banner-text">
+            <strong>This group is Inactive (Read-Only)</strong>
+            <p>Reactivate this group to record new expenses, add members, or settle debts.</p>
+          </div>
+          <button type="button" id="banner-reactivate-btn" class="button primary" style="min-height:44px;">Reactivate</button>
+        </div>
+
+        <!-- Group Loading Indicator -->
+        <div id="group-loading" class="loading-state" hidden>
+          <span>⏳ Loading group expenses…</span>
+        </div>
+
+        <!-- Group Heading -->
+        <section class="group-heading">
+          <div>
+            <div class="group-kicker">
+              <span class="trip-label">🌴 THE SHARED LIFE</span>
+              <span class="private-label">🔗 Link-only access</span>
+            </div>
+            <h1 id="group-name-heading">Loading group…</h1>
+            <p>Good times together. Every rupee, fairly shared. ☀️</p>
+          </div>
+          <div class="heading-actions">
+            <button type="button" id="group-status-toggle" class="retro-switch active" role="switch" aria-checked="true" aria-label="Toggle group active status" style="min-height:44px;">
+              <span id="group-status-toggle-label" class="retro-switch-label">ACTIVE</span>
+              <span class="retro-switch-thumb"></span>
+            </button>
+            <button type="button" id="share-group-btn" class="button secondary">
+              📤 Share group
+            </button>
+            <button type="button" id="add-expense-trigger" class="button primary">
+              ＋ Add expense
+            </button>
+          </div>
+        </section>
+
+        <!-- Group Code Strip -->
+        <div class="group-code-strip">
+          <button type="button" id="copy-code-btn" class="group-code" aria-label="Copy group code">
+            <span>GROUP CODE</span>
+            <code id="group-code">...</code>
+            <span>📋</span>
+          </button>
+          <span class="code-strip-desc">Share this link or code with your friends. Anyone with the link can view and record expenses.</span>
+        </div>
+
+        <!-- Dashboard Layout -->
+        <div class="dashboard-layout">
+          <!-- Main Column -->
+          <div class="main-column">
+            <!-- Stats Grid -->
+            <div class="stats-grid">
+              <div class="stat-card">
+                <div class="stat-label">
+                  <span>TOTAL GROUP SPEND</span>
+                  <span class="stat-icon">💳</span>
+                </div>
+                <div id="total-spend" class="stat-value tabular-num">₹0.00</div>
+                <div class="stat-detail">
+                  <span>Calculated from saved group history</span>
+                </div>
+              </div>
+
+              <div class="stat-card">
+                <div class="stat-label">
+                  <span>OUTSTANDING BALANCE</span>
+                  <span class="stat-icon">⚖️</span>
+                </div>
+                <div id="outstanding-debt" class="stat-value tabular-num">₹0.00</div>
+                <div class="stat-detail">
+                  <span>Total amount unsettled across group</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Ledger Panel & Tabs -->
+            <div class="ledger-panel">
+              <div class="tabs" role="tablist">
+                <button type="button" class="tab-btn active" data-tab="expenses" role="tab" aria-selected="true">
+                  Expenses <span id="expense-count" class="tab-count tabular-num">0</span>
+                </button>
+                <button type="button" class="tab-btn" data-tab="balances" role="tab" aria-selected="false">
+                  Balances
+                </button>
+                <button type="button" class="tab-btn" data-tab="settlements" role="tab" aria-selected="false">
+                  Settle up <span class="settle-dot"></span>
+                </button>
+              </div>
+
+              <!-- Tab 1: Expenses -->
+              <div id="expenses-tab-content">
+                <div class="list-toolbar">
+                  <div>
+                    <h2>Group expenses</h2>
+                    <p class="toolbar-sub">List of all shared costs, oldest first.</p>
+                  </div>
+                  <div class="expense-tools">
+                    <button type="button" id="export-csv-btn" class="button secondary tool-btn" title="Export expense ledger to CSV">
+                      📥 Export CSV
+                    </button>
+                    <div class="search-box">
+                      <span>🔍</span>
+                      <input type="text" id="expense-search" placeholder="Search expenses…">
+                    </div>
+                    <div class="filter-label">
+                      <select id="payer-filter" aria-label="Filter by payer">
+                        <option value="all">All payers</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="expenses-list-container">
+                  <!-- Dynamically rendered -->
+                </div>
+              </div>
+
+              <!-- Tab 2: Balances -->
+              <div id="balances-tab-content" hidden>
+                <div class="section-heading">
+                  <h2>Member balances</h2>
+                  <p class="section-sub">
+                    Positive balance means you get back money. Negative balance means you owe the group.
+                  </p>
+                </div>
+
+                <div id="balances-list-container" class="balance-list">
+                  <!-- Dynamically rendered -->
+                </div>
+
+                <div class="information-strip">
+                  <span>ℹ️</span>
+                  <span>The sum of all balances always equals zero paise. Balances are calculated authoritatively by the server.</span>
+                </div>
+              </div>
+
+              <!-- Tab 3: Settle Up -->
+              <div id="settlements-tab-content" hidden>
+                <div class="section-heading">
+                  <h2>Suggested settlement transfers</h2>
+                  <p class="section-sub">
+                    Bilateral debt minimization: pairs the largest debtor with the largest creditor to settle debts in fewest transfers.
+                  </p>
+                </div>
+
+                <div id="settlements-list-container" class="transfer-list">
+                  <!-- Dynamically rendered -->
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sidebar -->
+          <aside class="sidebar">
+            <div class="members-card">
+              <div class="card-top">
+                <h2>Group members <span id="member-count" class="tabular-num">0</span></h2>
+                <span class="live-tag"><span></span> active</span>
+              </div>
+              <p class="members-sub">Up to 20 people in this group.</p>
+
+              <div id="member-list" class="member-list">
+                <!-- Dynamically populated -->
+              </div>
+
+              <form id="inline-add-member-form" class="inline-member-form">
+                <div class="field" style="margin-bottom:0;">
+                  <label for="new-member-name" class="inline-label">＋ Add a new member</label>
+                  <div style="display:flex; gap:6px;">
+                    <input type="text" id="new-member-name" placeholder="Member name" maxlength="40" required>
+                    <button type="submit" class="button secondary" style="min-height:44px; padding:0 14px;">Add</button>
+                  </div>
+                </div>
+              </form>
+            </div>
+
+            <div class="information-strip" style="margin:0;">
+              <span>🔒</span>
+              <span><strong>Link is your pass:</strong> Anyone with this group link can add expenses or settle debts. No passwords needed.</span>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </main>
+
+    <!-- Modal: Add Expense -->
+    <dialog id="add-expense-modal" class="modal">
+      <div class="modal-inner">
+        <div class="modal-heading">
+          <div>
+            <span class="trip-label">EXPENSE RECORD</span>
+            <h2>Add an expense</h2>
+          </div>
+          <button type="button" class="close-btn close-modal" aria-label="Close dialog">✕</button>
+        </div>
+
+        <div id="expense-form-error" class="form-error" hidden></div>
+
+        <form id="expense-form">
+          <div class="field">
+            <label for="expense-desc">Description</label>
+            <input type="text" id="expense-desc" placeholder="e.g. Seafood Beach Shack Dinner" maxlength="100" required>
+          </div>
+
+          <div class="field">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <label for="expense-amount">Amount (in Rupees)</label>
+              <button type="button" id="toggle-calc-btn" class="button calc-btn">
+                🧮 Multi-item calculator
+              </button>
+            </div>
+            <input type="text" id="expense-amount" class="tabular-num" placeholder="0.00" required>
+          </div>
+
+          <!-- Quick Calculator sub-section -->
+          <div id="calc-container" class="calc-container" hidden>
+            <div class="calc-header">
+              <span>Quick line-item calculator</span>
+              <button type="button" id="add-calc-row-btn" class="calc-add-btn">＋ Add line item</button>
+            </div>
+            <div id="calc-items-container"></div>
+            <span class="calc-hint">Items sum automatically into total above.</span>
+          </div>
+
+          <div class="field">
+            <label for="expense-paid-by">Paid by</label>
+            <select id="expense-paid-by" required>
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+
+          <!-- Split Control -->
+          <div class="field">
+            <label>Split type</label>
+            <div class="split-control" role="group" aria-label="Split type">
+              <button type="button" class="split-pill selected" data-type="equal">Equal</button>
+              <button type="button" class="split-pill" data-type="shares">Shares</button>
+              <button type="button" class="split-pill" data-type="exact">Exact (₹)</button>
+            </div>
+          </div>
+
+          <!-- Dynamic split participants container -->
+          <div id="split-config-container">
+            <!-- Checkboxes or weights -->
+          </div>
+
+          <!-- Real-time split preview -->
+          <div class="split-preview">
+            <div class="split-preview-header">
+              <span>⚡ Live split preview (Hare-Niemeyer exact paise):</span>
+            </div>
+            <div id="split-preview-list" class="preview-list">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="button secondary close-modal">Cancel</button>
+            <button type="submit" class="button primary">Save expense</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <!-- Modal: How It Works -->
+    <dialog id="how-it-works-modal" class="modal">
+      <div class="modal-inner">
+        <div class="modal-heading">
+          <h2>How FairShare works</h2>
+          <button type="button" class="close-btn close-modal" aria-label="Close dialog">✕</button>
+        </div>
+        <div class="modal-body-text">
+          <p><strong>1. Zero Accounts Required:</strong> The group link is your bearer token. Anyone with the URL can view and add expenses.</p>
+          <p style="margin-top:10px;"><strong>2. Exact Paise Arithmetic:</strong> All financial splits avoid floating point errors. Leftover paise are allocated deterministically using the largest-remainder method.</p>
+          <p style="margin-top:10px;"><strong>3. Greedy Debt Minimization:</strong> Settle Up simplifies mutual IOUs so your group pays each other in the absolute minimum number of payments.</p>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="button primary close-modal">Got it!</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Modal: Delete Confirmation -->
+    <dialog id="delete-confirm-modal" class="modal">
+      <div class="modal-inner">
+        <div class="modal-heading">
+          <h2>Delete expense?</h2>
+          <button type="button" class="close-btn close-modal" aria-label="Close dialog">✕</button>
+        </div>
+        <p class="modal-body-text">
+          Are you sure you want to delete <strong id="delete-expense-desc">this expense</strong>? This will recompute all member balances and settlements immediately.
+        </p>
+        <div class="form-actions">
+          <button type="button" id="cancel-delete-btn" class="button secondary">Cancel</button>
+          <button type="button" id="confirm-delete-btn" class="button primary danger-btn">Delete</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Single Context-Aware AI Assistant & Drawer -->
+    <div id="ai-chat-root" class="ai-chat-root">
+      <div id="ai-chat-backdrop" class="ai-chat-backdrop" style="display:none;" aria-hidden="true"></div>
+
+      <!-- Single Floating Action Button (bottom-right, >= 44px) -->
+      <button type="button" id="ai-chat-launcher-btn" class="ai-chat-fab" aria-label="Open FairShare AI Assistant" aria-expanded="false" aria-haspopup="dialog">
+        <span class="ai-fab-icon">✦</span>
+        <span class="ai-fab-text">AI Assistant</span>
+      </button>
+
+      <!-- AI Side Bar Drawer -->
+      <aside id="ai-chat-drawer" class="ai-chat-sidebar" role="dialog" aria-label="FairShare AI Assistant" style="display:none;">
+        <header class="ai-chat-header">
+          <div class="ai-header-title-box">
+            <span class="ai-header-avatar">✦</span>
+            <div>
+              <h3>FairShare AI</h3>
+              <span class="ai-header-status" id="ai-header-status-text"><span class="ai-status-dot"></span> Online &bull; NVIDIA Flash</span>
+            </div>
+          </div>
+          <div class="ai-header-actions">
+            <button type="button" id="ai-chat-history-btn" class="ai-action-btn" aria-label="View Chat History" title="Chat History">🕒</button>
+            <button type="button" id="ai-chat-new-btn" class="ai-action-btn" aria-label="Start new conversation" title="New Chat">＋</button>
+            <button type="button" id="ai-chat-close-btn" class="ai-action-btn ai-close-btn" aria-label="Close AI Assistant" title="Close">✕</button>
+          </div>
+        </header>
+
+        <!-- View 1: Main Conversation View -->
+        <div id="ai-chat-main-view" class="ai-chat-view-container">
+          <div id="ai-chat-messages" class="ai-chat-messages" role="log" aria-live="polite"></div>
+          <div id="ai-voice-status" class="ai-voice-status" style="display:none !important;" aria-live="assertive">
+            <div style="display:flex;align-items:center;">
+              <span class="voice-pulse-dot"></span>
+              <span id="ai-voice-status-text">Listening... (0s / 25s)</span>
+            </div>
+            <button type="button" id="ai-voice-cancel-btn" class="ai-voice-cancel-btn" aria-label="Cancel recording">Cancel</button>
+          </div>
+          <form id="ai-chat-form" class="ai-chat-form">
+            <input type="text" id="ai-chat-input" class="ai-chat-input" placeholder="Ask to split a bill or who owes what…" aria-label="Message FairShare AI" maxlength="400" autocomplete="off" required>
+            <button type="button" id="ai-chat-mic-btn" class="ai-chat-mic-btn" aria-label="Voice input (Hold or tap to speak)" title="Voice Input (English / Hindi / Hinglish)">
+              <span class="mic-icon">🎤</span>
+            </button>
+            <button type="submit" id="ai-chat-send-btn" class="ai-chat-send-btn" aria-label="Send message">
+              <span>Send</span> <span class="send-arrow">➔</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- View 2: Chat History View -->
+        <div id="ai-chat-history-view" class="ai-chat-history-view" style="display:none;">
+          <div class="ai-history-toolbar">
+            <button type="button" id="ai-history-back-btn" class="ai-history-back-btn">← Back to Chat</button>
+            <span class="ai-history-title">Chat History</span>
+            <button type="button" id="ai-history-clear-btn" class="ai-history-clear-btn" title="Clear all saved chats">Clear</button>
+          </div>
+          <div id="ai-chat-history-list" class="ai-chat-history-list" role="list"></div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast" hidden></div>
+  </div>
+
+  <!-- Modular Group Workspace Page JavaScript -->
+  <script type="module" src="/js/groupPage.js?v=25"></script>
+</body>
+</html>

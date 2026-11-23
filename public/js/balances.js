@@ -1,115 +1,67 @@
-/**
- * SplitFair — Balances Module (Walkthrough-Ready).
- * Renders member net balances and verifies conservation of money invariant (sum = 0).
- * Safe DOM manipulation via textContent only.
- */
+import { formatMoney } from './money.js';
 
-(function () {
-  "use strict";
+export function renderBalances(balances, container) {
+  container.replaceChildren();
 
-  let el = {};
-  let appState = null;
-
-  function init(stateRef) {
-    appState = stateRef;
-    el = {
-      balancesList: document.getElementById("balances-list"),
-      balanceChecksumBadge: document.getElementById("balance-checksum-badge"),
-      tabBadgeBalances: document.getElementById("tab-badge-balances"),
-    };
+  if (!balances || !balances.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    const h3 = document.createElement('h3');
+    h3.textContent = 'No balances yet';
+    const p = document.createElement('p');
+    p.textContent = 'Balances are calculated automatically when expenses and payments are recorded.';
+    empty.appendChild(h3);
+    empty.appendChild(p);
+    container.appendChild(empty);
+    return;
   }
 
-  function renderBalances() {
-    el.tabBadgeBalances.textContent = String(appState.members.length);
-    el.balancesList.innerHTML = "";
+  // PRD requirement: Balances must be ordered by member ID
+  const sorted = [...balances].sort((a, b) => a.memberId - b.memberId);
 
-    if (appState.balances.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "empty-state";
-      empty.innerHTML = `
-        <span class="empty-icon" aria-hidden="true">⚖️</span>
-        <h4 class="empty-title">No balances to display</h4>
-        <p class="empty-desc">Add members and record expenses to view net balances.</p>
-      `;
-      el.balancesList.appendChild(empty);
-      return;
-    }
+  for (const b of sorted) {
+    const row = document.createElement('div');
+    row.className = 'balance-row';
 
-    // Conservation of money: sum of balances must strictly equal 0
-    const sumBalances = appState.balances.reduce((acc, b) => acc + b.balance, 0);
-    if (sumBalances === 0) {
-      el.balanceChecksumBadge.className = "badge badge-success";
-      el.balanceChecksumBadge.textContent = "Balanced (Σ = ₹0.00)";
-      el.balanceChecksumBadge.setAttribute("title", "Conservation of money invariant satisfied: sum of net balances is zero.");
+    const avatar = document.createElement('span');
+    avatar.className = `avatar avatar-${(b.memberId - 1) % 6}`;
+    avatar.textContent = b.name.slice(0, 2).toUpperCase();
+
+    const person = document.createElement('div');
+    person.className = 'balance-person';
+
+    const name = document.createElement('strong');
+    name.textContent = b.name;
+
+    const sub = document.createElement('span');
+    if (b.balance > 0) {
+      sub.textContent = 'gets back money';
+    } else if (b.balance < 0) {
+      sub.textContent = 'owes money to the group';
     } else {
-      el.balanceChecksumBadge.className = "badge badge-danger";
-      el.balanceChecksumBadge.textContent = `Imbalanced (Σ = ${MoneyUtils.formatPaiseToRupees(sumBalances)})`;
-      el.balanceChecksumBadge.setAttribute("title", "Warning: Net ledger is out of balance!");
+      sub.textContent = 'fully settled up';
     }
 
-    // Render each member balance (sorted by memberId ASC from server)
-    appState.balances.forEach((b) => {
-      const card = document.createElement("div");
-      card.className = "balance-card";
+    person.appendChild(name);
+    person.appendChild(sub);
 
-      // Member Avatar & Name
-      const memberInfo = document.createElement("div");
-      memberInfo.className = "balance-member-info";
+    const amount = document.createElement('div');
+    amount.className = 'balance-amount';
+    if (b.balance > 0) {
+      amount.classList.add('positive');
+      amount.textContent = `+${formatMoney(b.balance)}`;
+    } else if (b.balance < 0) {
+      amount.classList.add('negative');
+      amount.textContent = formatMoney(b.balance);
+    } else {
+      amount.classList.add('neutral');
+      amount.textContent = '₹0.00';
+    }
 
-      const avatar = document.createElement("div");
-      avatar.className = "balance-member-avatar";
-      avatar.textContent = b.name.charAt(0).toUpperCase();
+    row.appendChild(avatar);
+    row.appendChild(person);
+    row.appendChild(amount);
 
-      const textWrap = document.createElement("div");
-      const name = document.createElement("div");
-      name.className = "balance-member-name";
-      name.textContent = b.name;
-
-      const sub = document.createElement("div");
-      sub.className = "balance-member-sub";
-      sub.textContent = `Member #${b.memberId}`;
-
-      textWrap.appendChild(name);
-      textWrap.appendChild(sub);
-      memberInfo.appendChild(avatar);
-      memberInfo.appendChild(textWrap);
-
-      // Amount & Status Text
-      const valBox = document.createElement("div");
-      valBox.className = "balance-val-box";
-
-      const amount = document.createElement("div");
-      const status = document.createElement("div");
-
-      if (b.balance > 0) {
-        amount.className = "balance-val-amount positive";
-        amount.textContent = `+${MoneyUtils.formatPaiseToRupees(b.balance)}`;
-        status.className = "balance-status-text positive";
-        status.textContent = "gets back";
-      } else if (b.balance < 0) {
-        amount.className = "balance-val-amount negative";
-        amount.textContent = `-${MoneyUtils.formatPaiseToRupees(Math.abs(b.balance))}`;
-        status.className = "balance-status-text negative";
-        status.textContent = "owes";
-      } else {
-        amount.className = "balance-val-amount neutral";
-        amount.textContent = MoneyUtils.formatPaiseToRupees(0);
-        status.className = "balance-status-text neutral";
-        status.textContent = "settled up";
-      }
-
-      valBox.appendChild(amount);
-      valBox.appendChild(status);
-
-      card.appendChild(memberInfo);
-      card.appendChild(valBox);
-
-      el.balancesList.appendChild(card);
-    });
+    container.appendChild(row);
   }
-
-  window.BalancesModule = {
-    init,
-    renderBalances,
-  };
-})();
+}

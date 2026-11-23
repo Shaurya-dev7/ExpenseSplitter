@@ -1,188 +1,187 @@
-# SplitFair — Group Expense Splitter (Problem C4: Fewest Payments)
+# Fairshare — Group Expense Splitter (Track C, Problem C4)
 
-> **Track C: Web / App Development — Problem C4**  
-> A phone-first, zero-auth group expense splitter with exact integer paise accounting, deterministic split rounding, and greedy debt simplification to minimize settlements.
+A phone-first group expense splitter built strictly according to the **Track C, Problem C4 (Fewest Payments)** PRD. Friends create a group, add members, record expenses with equal, shares, or exact splits, view zero-sum member balances, and settle up with minimal bilateral transfers.
 
-[![Tests](https://img.shields.io/badge/tests-87%20passing-brightgreen.svg)]()
-[![Stack](https://img.shields.io/badge/tech%20stack-Node%20%7C%20Express%20%7C%20SQLite%20%7C%20Vanilla%20JS-blue.svg)]()
-[![Zero Auth](https://img.shields.io/badge/auth-zero%20friction%20URL--safe%20IDs-orange.svg)]()
+Anyone with a group link can view, record, or delete its data: **the group link is the sole access control**. No login, passwords, accounts, external cloud services, or build tools are required.
 
 ---
 
-## 1. Executive Summary & Design Highlights
+## 1. Strict Technology Stack
 
-When sharing expenses during trips, outings, or shared flat living, traditional apps require every participant to install applications, register accounts, remember passwords, and navigate cumbersome screens. **SplitFair** solves this with a zero-friction, phone-first architecture:
-
-1. **Zero-Auth Access Model:** Creating a group generates a cryptographically unguessable, 16-character URL-safe identifier (`crypto.randomBytes(12).toString('base64url')`). Anyone holding the link can view expenses, record payments, and settle up.
-2. **Zero Floating-Point Money Math:** All amounts in database storage, calculations, API requests, and responses are whole-number integers in **paise** (1 INR = 100 paise). String-based decimal parsing and `BigInt` operations prevent IEEE-754 precision errors.
-3. **Deterministic Remainder Distribution:** Remainder paise from fractional divisions (`equal` or `shares` splits) are allocated deterministically (highest fractional remainder first, broken by lowest `memberId`). The sum of split allocations strictly equals the total expense.
-4. **Greedy Debt Simplification (Fewest Payments):** Net member balances are computed directly from the immutable transaction ledger. Debts are resolved by matching the largest debtor with the largest creditor iteratively, guaranteeing at most $k - 1$ transfers for $k$ unsettled members with zero circular transactions.
-5. **Real-Time Live Synchronization:** 4-second non-intrusive polling ensures participants on different devices stay synchronized without page reloads.
-
-> [!WARNING]
-> **Access-Control Limitation (Zero-Auth Design Contract):**  
-> The random 16-character group ID in the URL is the **sole access control**. Anyone who has the group link can view all expenses, add new members, record expenses, delete expenses, and record settlement payments. Do not share the link with unintended parties.
-
----
-
-## 2. Technology Stack & Constraints
-
-| Layer | Technology | Rationale & Invariants |
-|---|---|---|
-| **Frontend** | Vanilla HTML5, CSS3, ES2020+ JavaScript | Pure web platform; zero npm/framework dependencies, zero build steps. Mobile-first design (360px–1440px), touch targets $\ge 44\text{px}$. |
-| **Backend** | Node.js (>=20.0.0), Express.js | CommonJS module structure, strict error-handling middleware. |
-| **Database** | Local SQLite via `better-sqlite3` | Zero hosted dependencies; WAL mode, foreign keys enforced, `BEGIN IMMEDIATE` transactions to eliminate concurrent write race conditions. Auto-initialized schema on startup. |
-| **Testing** | Node.js built-in `node:test` + `supertest` | 87 comprehensive tests covering database invariants, integer math, split algorithms, debt simplification, REST API endpoints, and static frontend delivery. |
+- **Frontend**: HTML5, CSS3, Vanilla JavaScript (ES2020+ modules).
+  - Browser Fetch API for REST communication.
+  - Native DOM APIs for rendering with strict XSS immunity (`textContent` / safe DOM elements).
+  - Responsive, phone-first layout (tested from 360px up to 1280px).
+  - **No React, No Vue, No Tailwind, No Bootstrap, No build step.**
+- **Backend**: Node.js, Express.js (v5.3.0).
+  - Exposes REST API under `/api`.
+  - Serves static vanilla frontend at `/`.
+- **Database**: SQLite (`fairshare.db`) using native `node:sqlite`.
+  - Stored locally inside the project.
+  - Automatically created on first server start.
+  - Zero native compilation dependencies.
+- **Testing**:
+  - Node.js built-in test runner (`node:test`).
+  - Supertest for API contract tests.
 
 ---
 
-## 3. Architecture & Code Organization
-
-```
-SplitFair Repository Structure
-├── public/                     # Static Frontend (Zero Build Step)
-│   ├── css/
-│   │   └── style.css           # Phone-first design system (360px-1440px, touch >=44px)
-│   ├── js/
-│   │   ├── money.js            # Client integer paise parsing & preview split math
-│   │   ├── api.js              # Fetch client wrapper for all 9 REST endpoints
-│   │   ├── expenses.js         # Expense listing, delete flow, Quick Item Calculator
-│   │   ├── balances.js         # Net member balances and zero-sum checksum
-│   │   ├── settlements.js      # Greedy transfers, payment confirmation, reminder copy
-│   │   └── app.js              # Orchestrator, SPA routing, polling, offline detection
-│   └── index.html              # Semantic HTML5 SPA layout
-├── src/                        # Node.js + Express.js Backend
-│   ├── controllers/            # Route controllers with strict input validation
-│   ├── database/
-│   │   ├── db.js               # better-sqlite3 connection factory with PRAGMAs
-│   │   ├── schema.js           # DDL schema with defensive CHECK constraints
-│   │   ├── repository.js       # Transaction-safe data access layer (BEGIN IMMEDIATE)
-│   │   └── errors.js           # Domain database error classes
-│   ├── middleware/             # Central error & JSON syntax handlers
-│   ├── routes/                 # Express router mounts
-│   ├── services/
-│   │   ├── split.service.js    # Equal, shares, exact split deterministic calculations
-│   │   ├── balance.service.js  # Ledger balance derivation (sum = 0 invariant)
-│   │   └── settlement.service.js # Greedy debt simplification (fewest payments)
-│   ├── utils/
-│   │   ├── money.js            # Exact string-splitting & BigInt integer arithmetic
-│   │   └── group-id.js         # Cryptographically random URL-safe ID generator
-│   ├── app.js                  # Express application setup & middleware pipeline
-│   └── server.js               # Entrypoint listening on PORT (default 3000)
-├── tests/                      # Automated Test Suite (node:test + supertest)
-├── .env.example                # Environment variable documentation
-├── .gitignore                  # Git ignore rules (*.db, node_modules/, .env, data/)
-└── package.json                # Project manifest and scripts
-```
-
----
-
-## 4. REST API Specification
-
-| Method | Endpoint | Success Status | Description | Request Body |
-|---|---|---|---|---|
-| `POST` | `/api/groups` | `201 Created` | Create new group with 2–20 members | `{ "name": "Goa Trip", "members": ["Asha", "Ben"] }` |
-| `GET` | `/api/groups/:gid` | `200 OK` | Get group metadata and member roster | *None* |
-| `POST` | `/api/groups/:gid/members` | `201 Created` | Add single member (up to 20 cap) | `{ "name": "Charlie" }` |
-| `POST` | `/api/groups/:gid/expenses` | `201 Created` | Add expense with deterministic splits | `{ "description": "Dinner", "amount": 9000, "paidBy": 1, "split": { "type": "equal" } }` |
-| `GET` | `/api/groups/:gid/expenses` | `200 OK` | List expenses (chronological, oldest first) | *None* |
-| `DELETE` | `/api/groups/:gid/expenses/:eid` | `204 No Content` | Delete expense and recalculate balances | *None* |
-| `POST` | `/api/groups/:gid/payments` | `201 Created` | Record settlement payment | `{ "from": 2, "to": 1, "amount": 4500 }` |
-| `GET` | `/api/groups/:gid/balances` | `200 OK` | Compute current member net balances | *None* |
-| `GET` | `/api/groups/:gid/settlements` | `200 OK` | Compute greedy debt simplification transfers | *None* |
-
----
-
-## 5. Algorithmic Invariants & Edge Case Handling
-
-### 5.1 Exact Paise Currency Engine (`src/utils/money.js`)
-- Standard JavaScript numbers lose precision during fractional operations (e.g., `0.1 + 0.2 === 0.30000000000000004`).
-- `parseRupeesToPaise` strictly matches string input against `/^\d+(?:\.\d{1,2})?$/`, rejects numbers with $>2$ decimal places, and converts the whole part and fractional part directly using `BigInt`:
-  $$\text{paise} = \text{BigInt}(\text{whole}) \times 100 + \text{BigInt}(\text{paddedFrac})$$
-- Formatter `formatPaiseToRupees` operates via integer quotient `Math.floor(abs / 100)` and remainder `abs % 100`.
-
-### 5.2 Deterministic Remainder Allocation (`src/services/split.service.js`)
-- When dividing an expense among $N$ participants, integer division often leaves $R$ leftover paise ($0 \le R < N$):
-  $$\text{base} = \left\lfloor \frac{\text{amount} \times w_i}{\sum w} \right\rfloor, \quad \text{remainder}_i = (\text{amount} \times w_i) \pmod{\sum w}$$
-- Participants are sorted in descending order of remainder. Ties are broken deterministically by lowest `memberId`.
-- The top $R$ participants receive $+1$ paise.
-- **Invariant:** $\sum_{i} \text{split}_i \equiv \text{amount}$ always holds with mathematical certainty.
-
-### 5.3 Greedy Debt Simplification (`src/services/settlement.service.js`)
-- Net balance for member $i$:
-  $$\text{Balance}_i = \sum \text{PaidAsPayer} - \sum \text{OwedInSplits} + \sum \text{PaymentsMade} - \sum \text{PaymentsReceived}$$
-- **Conservation of Money:** $\sum_{i} \text{Balance}_i \equiv 0$.
-- In each step:
-  1. Identify debtor $D$ with most negative balance.
-  2. Identify creditor $C$ with most positive balance.
-  3. Transfer amount $T = \min(|B_D|, B_C)$.
-  4. Deduct $T$ from $|B_D|$ and $B_C$.
-  5. Repeat until all balances reach 0.
-- **Guaranteed Properties:**
-  - Terminates in at most $k - 1$ steps for $k$ unsettled members.
-  - Zero circular transfers or overlapping payer/receiver roles.
-  - All suggested payment amounts are strictly positive ($> 0$).
-
----
-
-## 6. Implemented Optional Features (Approved Extras) & Known Limitations
-
-### Approved Extras Implemented:
-1. **Approved Extra A — Live Split Preview & Remainder Explanations:** Real-time breakdown in the Add Expense modal before saving, highlighting the distribution of any remainder paise to participants.
-2. **Approved Extra B — Settlement Explanation Banner:** Clarifies how greedy debt simplification minimizes transfers and explicitly indicates that suggested transfers are **not** considered paid until recorded via "Mark as Paid".
-3. **Approved Extra C — Quick Item Calculator:** A collapsible in-form calculator allowing users to enter individual line items (parsed as exact integer paise) and apply the computed total directly to the expense amount field.
-4. **Approved Extra D — One-Click Plain-Text Payment Reminders:** A "Copy Reminder" action on every suggested settlement that copies a pre-formatted reminder to the clipboard for manual sharing across any platform, accompanied by a direct WhatsApp deep link.
-5. **Offline Indicator & Guardrail:** Immediate visual banner when offline that prevents data-loss or failed write operations.
-
-### Known Limitations:
-1. **Access Control Model:** Unlisted random URL-safe ID is the only access gate (zero user accounts or passwords by design).
-2. **Group Size Cap:** Maximum of 20 members per group.
-3. **Currency Support:** Single currency (INR, stored as integer paise).
-4. **Expense Amount Boundary:** Maximum expense value of 1,000,000,000 paise (₹1,00,00,000.00).
-
----
-
-## 7. Setup & Verification Instructions
+## 2. Setup and One-Command Startup
 
 ### Prerequisites
-- Node.js >= 20.0.0
-- npm >= 9.0.0
+- Node.js `>=22.5.0` (required for native `node:sqlite`)
+- npm
 
-### Configuration
-Create a `.env` file from `.env.example`:
+### Installation & Run
 ```bash
-cp .env.example .env
-```
-Default parameters:
-- `PORT=3000`
-- `DB_PATH=./data/expenses.db`
-- `NODE_ENV=development`
+# 1. Install dependencies
+npm install
 
-### One-Command Startup
-```bash
+# 2. Start the server (One-command startup; fresh empty database)
 npm start
-```
-On startup:
-- Creates the `./data/` directory and SQLite database file if they do not exist.
-- Executes `initSchema()` to initialize all tables and indexes.
-- Starts the Express HTTP server on the configured port.
-- **Web UI:** `http://localhost:3000`
-- **Health Check:** `http://localhost:3000/api/health`
 
-### Running the Automated Test Suite
+# (Optional) Seed demo data for Goa trip demonstration:
+npm run seed
+```
+
+The server listens on `process.env.PORT` (defaults to **3000**):
+- Web UI: **http://localhost:3000**
+- REST API: **http://localhost:3000/api**
+
+### Running Automated Tests
 ```bash
 npm test
 ```
-Executes all 87 tests across:
-- Database schema creation, foreign key enforcement, WAL mode, transaction isolation.
-- Exact integer paise arithmetic, rounding boundaries, and string parsing.
-- Split allocations (equal, shares, exact) with deterministic tie-breaking.
-- Net balance derivations and zero-sum conservation.
-- Greedy settlement algorithm invariants.
-- REST API contracts, validation error responses, 404s, and 409 duplicate checks.
-- Static frontend asset delivery and accessibility checks.
+Runs all 30 core unit, SQLite persistence, and HTTP integration tests using `node --test tests/*.test.js` (completes in <800ms).
 
 ---
 
-## 8. License
-ISC
+## 3. Architecture and Code Organization
+
+```text
+Splitter/
+├── src/
+│   ├── server.js                     # Express server & static file serving
+│   ├── app.js                        # Express app, middleware, CORS
+│   ├── routes/
+│   │   └── group.routes.js           # REST API router
+│   ├── controllers/
+│   │   └── group.controller.js       # Input validation & endpoint handlers
+│   ├── services/
+│   │   ├── split.service.js          # Pure Hare-Niemeyer split calculation
+│   │   ├── balance.service.js        # BigInt zero-sum balance calculation
+│   │   └── settlement.service.js     # Greedy bilateral debt minimization
+│   ├── database/
+│   │   └── repository.js             # SQLite persistence & CAS concurrency
+│   ├── middleware/
+│   │   └── error.middleware.js       # Safe consistent error formatting
+│   └── utils/
+│       ├── money.js                  # String/BigInt integer-paise math
+│       ├── errors.js                 # HttpError classes & validation helpers
+│       ├── group-code.js             # Group ID extraction & sanitization
+│       ├── group-id.js               # Random URL-safe 16-char ID generator
+│       └── group-validation.js       # 2-20 member validation & trimming
+├── public/
+│   ├── index.html                    # Semantic, phone-first HTML5
+│   ├── css/
+│   │   └── style.css                 # Custom mobile-first responsive CSS
+│   ├── js/
+│   │   ├── app.js                    # UI state, event listeners, 5s polling
+│   │   ├── api.js                    # Fetch REST client
+│   │   ├── money.js                  # Client-side paise/rupee conversion
+│   │   ├── split.js                  # Client-side live preview engine
+│   │   ├── expenses.js               # Expense list rendering & filters
+│   │   ├── balances.js               # Balances list rendering
+│   │   └── settlements.js            # Settle-up cards & WhatsApp reminders
+│   └── favicon.svg                   # Brand icon
+├── tests/
+│   ├── split.test.js                 # Split rounding & 1999 fuzz tests
+│   ├── balance.test.js               # Zero-sum invariant & BigInt tests
+│   ├── settlement.test.js            # Greedy properties over 1,000 groups
+│   ├── api.test.js                   # All 9 endpoint Supertest contracts
+│   ├── sqlite.test.js                # SQLite persistence, fresh empty DB, bounds
+│   └── group.api.test.js             # Concurrency & member sequence tests
+├── .gitignore                        # Ignores node_modules, *.db, *.sqlite
+├── package.json                      # Lean dependencies (express, dotenv, supertest)
+└── README.md
+```
+
+---
+
+## 4. REST API Contract
+
+All amounts in API requests and responses are integer paise (e.g. ₹100.00 = `10000`).
+
+| Method | Endpoint | Success | Description |
+|---|---|---|---|
+| `POST` | `/api/groups` | 201 | Create group: `{"name":"Trip","members":["Asha","Ben"]}` |
+| `GET` | `/api/groups/:gid` | 200 | Get group metadata and member list |
+| `POST` | `/api/groups/:gid/members` | 201 | Add member: `{"name":"Charlie"}` (rejects duplicates) |
+| `POST` | `/api/groups/:gid/expenses` | 201 | Record expense: `{"description":"Dinner","amount":9000,"paidBy":1,"split":{...}}` |
+| `GET` | `/api/groups/:gid/expenses` | 200 | List expenses, oldest first |
+| `DELETE` | `/api/groups/:gid/expenses/:eid` | 204 | Delete expense (no response body) |
+| `POST` | `/api/groups/:gid/payments` | 201 | Record payment: `{"from":2,"to":1,"amount":3000}` |
+| `GET` | `/api/groups/:gid/balances` | 200 | Net balances per member (ordered by ID, zero-sum) |
+| `GET` | `/api/groups/:gid/settlements` | 200 | Suggested transfers to settle group |
+
+### Error Formatting
+- Validation errors return HTTP 400: `{"errors": {"field": "message"}}`
+- Duplicate member names return HTTP 409: `{"error": "A member with this name already exists."}`
+- Unknown resources return HTTP 404: `{"error": "..."}`
+- Malformed JSON returns HTTP 400: `{"error": "Malformed JSON..."}`
+- No stack traces are ever exposed.
+
+---
+
+## 5. Mathematical Invariants & Money Rules
+
+1. **Exact Integer Paise Math**:
+   - Floating-point arithmetic is strictly prohibited.
+   - Rupee input strings are parsed via string splitting and `BigInt`:
+     `paise = BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'))`
+   - Rejects inputs with more than two decimal places or numbers exceeding `Number.MAX_SAFE_INTEGER`.
+2. **Hare-Niemeyer / Largest Remainder Split**:
+   - Base share: `floor(amount * weight / totalWeight)`
+   - Leftovers from remainder `(amount * weight) % totalWeight` are distributed to participants with the largest remainders.
+   - Remainder ties are resolved by lowest member ID.
+   - Guaranteed invariant: `sum(splits) == expense.amount` to the exact paise.
+3. **Zero-Sum Balances**:
+   - `balance = paid - owed + paymentsMade - paymentsReceived`
+   - Sum of all member balances always equals zero paise.
+4. **Greedy Debt Minimization**:
+   - Repeatedly pairs the largest debtor with the largest creditor.
+   - Guarantees at most $k - 1$ transfers (where $k$ is the number of unsettled members).
+   - No participant both pays and receives in the same settlement plan.
+
+---
+
+## 6. Approved Extra & Bonus Features
+
+1. **Split Explanation**: Live preview in the expense modal showing exact per-member amounts and how remainder paise were allocated before submitting.
+2. **Settlement Explanation**: Clear breakdown of debt cancellation suggestions, clarifying that a suggestion is not a completed payment until confirmed.
+3. **Quick Expense Calculator**: An in-modal line-item calculator that sums multiple bill items into a single total expense.
+4. **WhatsApp Payment Reminder**: 1-click button to copy or share politely formatted text for easy reminder sharing over messaging apps.
+5. **CSV Ledger Export (Bonus)**: 1-click button to download the entire group expense history and allocations as a `.csv` file.
+6. **Installable PWA & Offline Caching (Bonus)**: Web app manifest (`manifest.json`) and service worker (`sw.js`) for phone home-screen installation and offline static asset serving.
+7. **Remove Zero-Balance Member (Bonus)**: `DELETE /api/groups/:gid/members/:mid` safely cleans up group members who have zero balance and no transaction history.
+
+---
+
+## 7. Limitations & Security Assumptions
+
+- **Bearer Link Access**: The 16-character random URL-safe group ID is the sole access control. Anyone with the URL can view and add expenses. Do not publish private links publicly.
+- **Polling Eventual Consistency**: The frontend updates via a 5-second polling loop when the browser tab is focused.
+- **Not a Payment Gateway**: Fairshare records expense history and simplifies debts; it does not process bank transactions or transfer fiat currency.
+
+---
+
+## 8. Optional Authentication & User Accounts
+
+FairShare includes an optional, zero-friction account layer:
+- **Ungated Core Utility**: All 9 Problem C4 REST endpoints (`/api/groups/*`) and AI endpoints (`/api/ai/*`) remain 100% accessible to guest users without accounts or `Authorization` headers.
+- **Auto-Generated Unique Usernames**: During registration (`POST /api/auth/register`), users provide email, password, and optional name. A unique, DB-verified `@username` is derived from their email prefix plus a cryptographic numeric suffix (e.g., `alex4821`), preventing collisions with automatic database retry logic.
+- **Password Security**: Passwords are hashed with `crypto.scryptSync(password, salt, 64)` using 16 random salt bytes and compared using `crypto.timingSafeEqual`. Plaintext passwords or MD5/SHA password hashes are never stored, logged, or returned. Anti-enumeration protects login endpoints with identical timing and error messages for unknown accounts and wrong passwords.
+- **Per-Session Bearer Tokens**: Logins issue 24-hour cryptographic random tokens (`crypto.randomBytes(32).toString('base64url')`). The server stores only SHA-256 hashes of the active tokens in SQLite. Per-session logout deletes only the active device token without invalidating other sessions.
+- **Client Storage Trade-off**: Session tokens are held in browser `sessionStorage`.
+  - *Advantage*: Tokens are automatically scoped to the active browser tab session and cleared when the tab closes, reducing exposure on shared or public computers compared to long-lived `localStorage`.
+  - *Trade-off*: Unlike `httpOnly` cookies, `sessionStorage` can be read by JavaScript executing in the same origin. We mitigate this through strict XSS defenses: zero raw `innerHTML` rendering of user input (`textContent` / `createElement` only), input sanitization, and strict CORS policies.

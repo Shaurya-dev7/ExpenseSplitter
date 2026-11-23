@@ -1,173 +1,145 @@
-/**
- * REST API Client for Group Expense Splitter.
- * Communicates with /api/groups endpoints.
- */
+// Centralized API client with automatic Bearer token injection and global 401 interceptor
 
-class ApiError extends Error {
-  constructor(message, status, errors = null) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-    this.errors = errors;
+let unauthorizedHandler = null;
+
+export function setUnauthorizedHandler(fn) {
+  unauthorizedHandler = fn;
+}
+
+const TOKEN_KEY = 'fs_auth_token';
+const USER_KEY = 'fs_auth_user';
+
+export function getStoredToken() {
+  try {
+    return sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || null;
+  } catch {
+    return null;
   }
 }
 
-async function request(path, options = {}) {
-  const url = path.startsWith("/api") ? path : `/api${path}`;
+export async function apiRequest(endpoint, method = 'GET', body = undefined) {
+  if (!navigator.onLine) {
+    throw new Error('You are offline. Connect to the internet to perform this action.');
+  }
+
+  const token = getStoredToken();
   const headers = {
-    "Accept": "application/json",
-    ...(options.headers || {}),
+    'Content-Type': 'application/json'
   };
 
-  if (options.body && typeof options.body === "object") {
-    headers["Content-Type"] = "application/json";
-    options.body = JSON.stringify(options.body);
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
 
+  const options = {
+    method,
+    headers
+  };
+
+  if (body !== undefined) {
+    options.body = JSON.stringify(body);
+  }
+
+  let res;
   try {
-    const res = await fetch(url, { ...options, headers });
-
-    // Handle 204 No Content
-    if (res.status === 204) {
-      return null;
-    }
-
-    let data;
-    const contentType = res.headers.get("content-type") || "";
-    if (contentType.includes("application/json")) {
-      data = await res.json();
-    } else {
-      data = await res.text();
-    }
-
-    if (!res.ok) {
-      const errorMessage =
-        (data && data.error) ||
-        (data && data.message) ||
-        `Request failed with status ${res.status}`;
-      const fieldErrors = (data && data.errors) || null;
-      throw new ApiError(errorMessage, res.status, fieldErrors);
-    }
-
-    return data;
+    res = await fetch(endpoint, options);
   } catch (err) {
-    if (err instanceof ApiError) {
-      throw err;
-    }
-    throw new ApiError(err.message || "Network error. Please check your connection.", 0);
+    throw new Error('Unable to reach server. Please check your connection.');
   }
+
+  // Global 401 Interceptor
+  if (res.status === 401) {
+    try {
+      sessionStorage.removeItem('fairshare_token');
+      sessionStorage.removeItem('fairshare_user');
+      localStorage.removeItem('fairshare_token');
+      localStorage.removeItem('fairshare_user');
+    } catch {}
+
+    if (typeof unauthorizedHandler === 'function') {
+      unauthorizedHandler('Your session expired. Please sign in again.');
+    }
+
+    const err = new Error('Authentication required');
+    err.status = 401;
+    throw err;
+  }
+
+  if (res.status === 204) {
+    return null;
+  }
+
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error('Invalid response received from server.');
+  }
+
+  if (!res.ok) {
+    let msg = data.error;
+    if (data.errors && typeof data.errors === 'object') {
+      msg = Object.values(data.errors).join(' ');
+    }
+    const error = new Error(msg || 'An error occurred.');
+    error.status = res.status;
+    error.errors = data.errors;
+    throw error;
+  }
+
+  return data;
 }
 
-window.API = {
-  /**
-   * Create a new group.
-   * @param {object} param0
-   * @param {string} param0.name
-   * @param {string[]} param0.members
-   * @returns {Promise<{id: string, name: string, members: Array<{id: number, name: string}>}>}
-   */
-  async createGroup({ name, members }) {
-    return request("/groups", {
-      method: "POST",
-      body: { name, members },
-    });
-  },
+// Dedicated endpoint wrappers
+export async function fetchDashboard() {
+  return apiRequest('/api/dashboard', 'GET');
+}
 
-  /**
-   * Get group details and member list.
-   * @param {string} gid
-   * @returns {Promise<{id: string, name: string, members: Array<{id: number, name: string}>}>}
-   */
-  async getGroup(gid) {
-    return request(`/groups/${encodeURIComponent(gid)}`, {
-      method: "GET",
-    });
-  },
+export async function fetchGroup(id) {
+  const [group, expenses, balRes, setRes] = await Promise.all([
+    apiRequest(`/api/groups/${encodeURIComponent(id)}`, 'GET'),
+    apiRequest(`/api/groups/${encodeURIComponent(id)}/expenses`, 'GET').catch(() => []),
+    apiRequest(`/api/groups/${encodeURIComponent(id)}/balances`, 'GET').catch(() => ({ balances: [] })),
+    apiRequest(`/api/groups/${encodeURIComponent(id)}/settlements`, 'GET').catch(() => ({ transfers: [] }))
+  ]);
 
-  /**
-   * Add a member to an existing group.
-   * @param {string} gid
-   * @param {string} name
-   * @returns {Promise<{id: number, name: string}>}
-   */
-  async addMember(gid, name) {
-    return request(`/groups/${encodeURIComponent(gid)}/members`, {
-      method: "POST",
-      body: { name },
-    });
-  },
+  return {
+    ...group,
+    isActive: group.isActive !== false,
+    expenses: Array.isArray(expenses) ? expenses : [],
+    balances: Array.isArray(balRes?.balances) ? balRes.balances : [],
+    settlements: Array.isArray(setRes?.transfers) ? setRes.transfers : []
+  };
+}
 
-  /**
-   * Add an expense to a group.
-   * @param {string} gid
-   * @param {object} expenseData
-   * @returns {Promise<{id: number, description: string, amount: number, paidBy: number, splits: object, createdAt: string}>}
-   */
-  async addExpense(gid, expenseData) {
-    return request(`/groups/${encodeURIComponent(gid)}/expenses`, {
-      method: "POST",
-      body: expenseData,
-    });
-  },
+export async function setGroupStatus(groupId, isActive) {
+  return apiRequest(`/api/groups/${encodeURIComponent(groupId)}/status`, 'PATCH', { isActive });
+}
 
-  /**
-   * List all expenses for a group (oldest first).
-   * @param {string} gid
-   * @returns {Promise<Array<{id: number, description: string, amount: number, paidBy: number, splits: object, createdAt: string}>>}
-   */
-  async listExpenses(gid) {
-    return request(`/groups/${encodeURIComponent(gid)}/expenses`, {
-      method: "GET",
-    });
-  },
+export async function createGroup(group) {
+  return apiRequest('/api/groups', 'POST', group);
+}
 
-  /**
-   * Delete an expense.
-   * @param {string} gid
-   * @param {number} eid
-   * @returns {Promise<void>}
-   */
-  async deleteExpense(gid, eid) {
-    return request(`/groups/${encodeURIComponent(gid)}/expenses/${encodeURIComponent(eid)}`, {
-      method: "DELETE",
-    });
-  },
+export async function addExpense(groupId, expense) {
+  return apiRequest(`/api/groups/${encodeURIComponent(groupId)}/expenses`, 'POST', expense);
+}
 
-  /**
-   * Record a settlement payment.
-   * @param {string} gid
-   * @param {object} paymentData
-   * @param {number} paymentData.from
-   * @param {number} paymentData.to
-   * @param {number} paymentData.amount
-   * @returns {Promise<{id: number, from: number, to: number, amount: number, createdAt: string}>}
-   */
-  async recordPayment(gid, paymentData) {
-    return request(`/groups/${encodeURIComponent(gid)}/payments`, {
-      method: "POST",
-      body: paymentData,
-    });
-  },
+export async function deleteExpense(groupId, expenseId) {
+  return apiRequest(`/api/groups/${encodeURIComponent(groupId)}/expenses/${encodeURIComponent(expenseId)}`, 'DELETE');
+}
 
-  /**
-   * Get member balances.
-   * @param {string} gid
-   * @returns {Promise<{balances: Array<{memberId: number, name: string, balance: number}>}>}
-   */
-  async getBalances(gid) {
-    return request(`/groups/${encodeURIComponent(gid)}/balances`, {
-      method: "GET",
-    });
-  },
+export async function addMember(groupId, name) {
+  return apiRequest(`/api/groups/${encodeURIComponent(groupId)}/members`, 'POST', { name });
+}
 
-  /**
-   * Get suggested settlements (greedy debt simplification transfers).
-   * @param {string} gid
-   * @returns {Promise<{transfers: Array<{from: number, to: number, amount: number}>}>}
-   */
-  async getSettlements(gid) {
-    return request(`/groups/${encodeURIComponent(gid)}/settlements`, {
-      method: "GET",
-    });
-  },
-};
+export async function getBalances(groupId) {
+  return apiRequest(`/api/groups/${encodeURIComponent(groupId)}/balances`, 'GET');
+}
+
+export async function getSettlements(groupId) {
+  return apiRequest(`/api/groups/${encodeURIComponent(groupId)}/settlements`, 'GET');
+}
+
+export async function recordPayment(groupId, payment) {
+  return apiRequest(`/api/groups/${encodeURIComponent(groupId)}/payments`, 'POST', payment);
+}

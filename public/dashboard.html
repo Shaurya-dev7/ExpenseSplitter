@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — FairShare Group Expense Splitter</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0B0D10">
+
+  <!-- Google Fonts: Plus Jakarta Sans for UI + JetBrains Mono for Tabular Currency -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/css/style.css?v=25">
+</head>
+<body class="dashboard-page-body">
+  <!-- Retro CRT Scanline Screen Overlay (Toggleable) -->
+  <div class="retro-scanlines" aria-hidden="true"></div>
+
+  <!-- MULTI-PAGE: APP SHELL & DASHBOARD VIEW -->
+  <div id="app-shell" class="app-shell">
+    <!-- Topbar Header -->
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a href="/" class="brand" id="brand-home-link">
+          <span class="brand-star">★</span> fairshare
+        </a>
+        <nav class="desktop-nav" aria-label="Main navigation">
+          <a href="/" class="button secondary">
+            Landing Page
+          </a>
+          <a href="/dashboard" class="button secondary active">
+            Dashboard
+          </a>
+          <button type="button" id="open-create-modal-btn" class="button secondary">
+            ＋ New Group
+          </button>
+          <button type="button" id="how-it-works-btn" class="button secondary">
+            How it works ↗
+          </button>
+        </nav>
+        <div class="topbar-right">
+          <!-- 8-Bit Retro Sound Effects Toggle -->
+          <button type="button" id="retro-sfx-toggle-btn" class="button secondary sfx-toggle-btn" aria-label="Toggle retro 8-bit sound effects" title="Toggle retro 8-bit SFX">
+            <span class="sfx-icon">🔊</span>
+            <span class="sfx-text">SFX ON</span>
+          </button>
+
+          <!-- Single-State Auth Container -->
+          <div id="auth-nav-container" class="auth-nav-container">
+            <a href="/login" id="open-auth-btn" class="button secondary auth-btn">
+              Log in / Sign up
+            </a>
+            <div id="auth-user-bar" class="auth-user-bar" hidden>
+              <button type="button" id="auth-username-badge" class="auth-username-badge" title="Tap to copy username" aria-label="Copy your username">
+                <span class="auth-badge-at">@</span><span id="auth-username-text">username</span>
+                <span class="auth-copy-icon">📋</span>
+              </button>
+              <button type="button" id="auth-logout-btn" class="button secondary auth-logout-btn" aria-label="Log out of account">
+                Log out
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Offline Banner -->
+    <div id="offline-bar" class="offline-bar" hidden>
+      ⚠️ You're offline. Your saved group expenses are safe. Reconnect to sync or record changes.
+    </div>
+
+    <!-- Error Banner -->
+    <div id="error-bar" class="error-bar" hidden></div>
+
+    <!-- Main Content Container -->
+    <main class="main-container">
+      <div id="home-view" class="home-view">
+        <section class="home-hero">
+          <div class="home-hero-badge">
+            <span>✦</span> PROBLEM C4: FEWEST PAYMENTS <span>✦</span>
+          </div>
+          <h1>Shared expenses, settled simply.</h1>
+          <p>Zero sign-up required. Shareable group links. Record shared costs with exact paise math and settle debts in the absolute fewest payments.</p>
+        </section>
+
+        <div class="home-cards-grid">
+          <!-- Card 1: Create Group -->
+          <div class="home-card">
+            <div class="home-card-header">
+              <h2>Create a new group</h2>
+              <p>Set up a trip, apartment, or outing in 5 seconds.</p>
+            </div>
+            <div id="home-create-error" class="form-error" hidden></div>
+            <form id="home-create-form">
+              <div class="field">
+                <label for="home-group-name">Group name</label>
+                <input type="text" id="home-group-name" placeholder="e.g. Manali Road Trip or Flat 302" maxlength="60" required>
+              </div>
+              <div class="field">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                  <label>Members (2 to 20 people)</label>
+                  <button type="button" id="home-add-member-btn" class="member-add-text-btn">＋ Add member</button>
+                </div>
+                <div id="home-members-container">
+                  <!-- Dynamically populated initial member inputs -->
+                </div>
+              </div>
+              <button type="submit" class="button primary full-width" style="margin-top:10px;">Create group ➔</button>
+            </form>
+          </div>
+
+          <!-- Card 2: Open Group -->
+          <div class="home-card">
+            <div class="home-card-header">
+              <h2>Open existing group</h2>
+              <p>Paste your group link or 16-character code to view and manage expenses.</p>
+            </div>
+            <div id="home-join-error" class="form-error" hidden></div>
+            <form id="home-join-form" style="display:flex; flex-direction:column; gap:12px; margin-top:auto; margin-bottom:auto;">
+              <div class="field">
+                <label for="home-join-input">Group link or code</label>
+                <input type="text" id="home-join-input" placeholder="e.g. paste /group?id=... or 16-char code" required>
+              </div>
+              <button type="submit" class="button secondary full-width" style="min-height:44px;">Open group ➔</button>
+            </form>
+            <div class="home-card-footer-note">
+              <span>🔒 Anyone with the link has instant access.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: Your Recent Groups -->
+        <section class="recent-groups-section" id="recent-groups-section" style="margin-top:24px;">
+          <div class="section-heading" style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <h2 style="font-size:1.15rem; color:var(--text-primary); margin:0;">Your Groups</h2>
+              <p style="font-size:0.85rem; color:var(--text-muted); margin:2px 0 0;">Groups you created or recently viewed.</p>
+            </div>
+            <span id="saved-groups-count" class="badge tabular-num">0 groups</span>
+          </div>
+
+          <div id="saved-groups-grid" class="recent-groups-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:14px; margin-top:12px;">
+            <!-- Populated dynamically by dashboardPage.js -->
+            <div class="empty-groups-notice" style="grid-column:1/-1; padding:24px; background:var(--surface-card); border:1px dashed var(--border-hairline); border-radius:12px; text-align:center; color:var(--text-muted);">
+              No groups recorded yet. Create a group above or join one with a code!
+            </div>
+          </div>
+        </section>
+
+        <!-- Feature Points -->
+        <div class="home-features-grid" style="margin-top:28px;">
+          <div class="home-feature-item">
+            <h3><span>🔗</span> Zero-Login Access</h3>
+            <p>The shareable URL is your bearer token. No app downloads, no password resets, no friction for friends.</p>
+          </div>
+          <div class="home-feature-item">
+            <h3><span>🪙</span> Exact-Paise Math</h3>
+            <p>Zero floating-point rounding bugs. Handled via Hare-Niemeyer largest-remainder allocation.</p>
+          </div>
+          <div class="home-feature-item">
+            <h3><span>⚡</span> Fewest Payments</h3>
+            <p>Greedy bilateral simplification collapses an N-person web of debts into at most k − 1 transfers.</p>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Modal: Create / Join Group -->
+    <dialog id="create-group-modal" class="modal">
+      <div class="modal-inner">
+        <div class="modal-heading">
+          <div>
+            <span class="trip-label">NEW GROUP</span>
+            <h2>Create or join group</h2>
+          </div>
+          <button type="button" class="close-btn close-modal" aria-label="Close dialog">✕</button>
+        </div>
+
+        <div id="create-group-error" class="form-error" hidden></div>
+
+        <!-- Create Section -->
+        <form id="create-group-form">
+          <div class="field">
+            <label for="create-group-name">Group name</label>
+            <input type="text" id="create-group-name" placeholder="e.g. Manali Road Trip or Flat 302" maxlength="60" required>
+          </div>
+
+          <div class="field">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <label>Members (2 to 20 people)</label>
+              <button type="button" id="add-more-members-btn" class="member-add-text-btn">＋ Add member</button>
+            </div>
+            <div id="create-members-container">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+
+          <button type="submit" class="button primary full-width">Create group</button>
+        </form>
+
+        <div class="modal-divider">— OR JOIN EXISTING GROUP —</div>
+
+        <!-- Join Section -->
+        <form id="join-group-form" style="display:flex; gap:8px;">
+          <input type="text" id="join-group-input" placeholder="Paste group link or 16-char code" required>
+          <button type="submit" class="button secondary" style="min-height:44px; padding:0 16px;">Open</button>
+        </form>
+      </div>
+    </dialog>
+
+    <!-- Modal: How It Works -->
+    <dialog id="how-it-works-modal" class="modal">
+      <div class="modal-inner">
+        <div class="modal-heading">
+          <h2>How FairShare works</h2>
+          <button type="button" class="close-btn close-modal" aria-label="Close dialog">✕</button>
+        </div>
+        <div class="modal-body-text">
+          <p><strong>1. Zero Accounts Required:</strong> The group link is your bearer token. Anyone with the URL can view and add expenses.</p>
+          <p style="margin-top:10px;"><strong>2. Exact Paise Arithmetic:</strong> All financial splits avoid floating point errors. Leftover paise are allocated deterministically using the largest-remainder method.</p>
+          <p style="margin-top:10px;"><strong>3. Greedy Debt Minimization:</strong> Settle Up simplifies mutual IOUs so your group pays each other in the absolute minimum number of payments.</p>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="button primary close-modal">Got it!</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Single Context-Aware AI Assistant & Drawer -->
+    <div id="ai-chat-root" class="ai-chat-root">
+      <div id="ai-chat-backdrop" class="ai-chat-backdrop" style="display:none;" aria-hidden="true"></div>
+
+      <!-- Single Floating Action Button (bottom-right, >= 44px) -->
+      <button type="button" id="ai-chat-launcher-btn" class="ai-chat-fab" aria-label="Open FairShare AI Assistant" aria-expanded="false" aria-haspopup="dialog">
+        <span class="ai-fab-icon">✦</span>
+        <span class="ai-fab-text">AI Assistant</span>
+      </button>
+
+      <!-- AI Side Bar Drawer -->
+      <aside id="ai-chat-drawer" class="ai-chat-sidebar" role="dialog" aria-label="FairShare AI Assistant" style="display:none;">
+        <header class="ai-chat-header">
+          <div class="ai-header-title-box">
+            <span class="ai-header-avatar">✦</span>
+            <div>
+              <h3>FairShare AI</h3>
+              <span class="ai-header-status" id="ai-header-status-text"><span class="ai-status-dot"></span> Online &bull; NVIDIA Flash</span>
+            </div>
+          </div>
+          <div class="ai-header-actions">
+            <button type="button" id="ai-chat-history-btn" class="ai-action-btn" aria-label="View Chat History" title="Chat History">🕒</button>
+            <button type="button" id="ai-chat-new-btn" class="ai-action-btn" aria-label="Start new conversation" title="New Chat">＋</button>
+            <button type="button" id="ai-chat-close-btn" class="ai-action-btn ai-close-btn" aria-label="Close AI Assistant" title="Close">✕</button>
+          </div>
+        </header>
+
+        <!-- View 1: Main Conversation View -->
+        <div id="ai-chat-main-view" class="ai-chat-view-container">
+          <div id="ai-chat-messages" class="ai-chat-messages" role="log" aria-live="polite"></div>
+          <div id="ai-voice-status" class="ai-voice-status" style="display:none !important;" aria-live="assertive">
+            <div style="display:flex;align-items:center;">
+              <span class="voice-pulse-dot"></span>
+              <span id="ai-voice-status-text">Listening... (0s / 25s)</span>
+            </div>
+            <button type="button" id="ai-voice-cancel-btn" class="ai-voice-cancel-btn" aria-label="Cancel recording">Cancel</button>
+          </div>
+          <form id="ai-chat-form" class="ai-chat-form">
+            <input type="text" id="ai-chat-input" class="ai-chat-input" placeholder="Ask to split a bill or who owes what…" aria-label="Message FairShare AI" maxlength="400" autocomplete="off" required>
+            <button type="button" id="ai-chat-mic-btn" class="ai-chat-mic-btn" aria-label="Voice input (Hold or tap to speak)" title="Voice Input (English / Hindi / Hinglish)">
+              <span class="mic-icon">🎤</span>
+            </button>
+            <button type="submit" id="ai-chat-send-btn" class="ai-chat-send-btn" aria-label="Send message">
+              <span>Send</span> <span class="send-arrow">➔</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- View 2: Chat History View -->
+        <div id="ai-chat-history-view" class="ai-chat-history-view" style="display:none;">
+          <div class="ai-history-toolbar">
+            <button type="button" id="ai-history-back-btn" class="ai-history-back-btn">← Back to Chat</button>
+            <span class="ai-history-title">Chat History</span>
+            <button type="button" id="ai-history-clear-btn" class="ai-history-clear-btn" title="Clear all saved chats">Clear</button>
+          </div>
+          <div id="ai-chat-history-list" class="ai-chat-history-list" role="list"></div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast" hidden></div>
+  </div>
+
+  <!-- Modular Dashboard Page JavaScript -->
+  <script type="module" src="/js/dashboardPage.js?v=25"></script>
+</body>
+</html>

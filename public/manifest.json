@@ -1,0 +1,16 @@
+{
+  "name": "Fairshare — Group Expense Splitter",
+  "short_name": "Fairshare",
+  "description": "Phone-first group expense splitter — Problem C4: Fewest Payments",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fafaf7",
+  "theme_color": "#e77d63",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In or Create Account — FairShare</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0B0D10">
+
+  <!-- Google Fonts: Plus Jakarta Sans for UI + JetBrains Mono for Tabular Currency -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/css/style.css?v=25">
+</head>
+<body class="auth-page-body">
+  <!-- Retro CRT Scanline Screen Overlay (Toggleable) -->
+  <div class="retro-scanlines" aria-hidden="true"></div>
+
+  <!-- MULTI-PAGE: AUTH VIEW -->
+  <section id="auth-view" class="auth-view" aria-label="Sign In or Create Account">
+    <!-- Auth Header Bar -->
+    <header class="auth-view-header">
+      <div class="auth-header-inner">
+        <a href="/" class="auth-brand" id="auth-brand-link">
+          <span class="brand-star">★</span> fairshare
+        </a>
+        <a href="/dashboard" id="auth-guest-top-btn" class="button secondary auth-guest-top-btn">
+          Continue as Guest →
+        </a>
+      </div>
+    </header>
+
+    <div class="auth-view-container">
+      <!-- Left Column: Editorial Travel Highlights (>= 960px) -->
+      <div class="auth-editorial-panel">
+        <div class="auth-editorial-badge">
+          <span>✦</span> RETRO TRAVEL SQUAD <span>✦</span>
+        </div>
+        <h2 class="auth-editorial-title">
+          Settle your trips with zero drama.
+        </h2>
+        <p class="auth-editorial-desc">
+          One link for your entire travel crew. Record beach dinners, cabs, and Airbnb costs with exact paise math, settled in the absolute fewest payments.
+        </p>
+
+        <div class="auth-perks-list">
+          <div class="auth-perk-card">
+            <span class="auth-perk-icon">✈️</span>
+            <div>
+              <strong>Built for Trips & Rooms</strong>
+              <p>Share a link or 16-char code. Anyone with the URL can view and add expenses instantly.</p>
+            </div>
+          </div>
+          <div class="auth-perk-card">
+            <span class="auth-perk-icon">🪙</span>
+            <div>
+              <strong>Exact-Paise Arithmetic</strong>
+              <p>Hare-Niemeyer largest-remainder allocation eliminates floating-point penny loss forever.</p>
+            </div>
+          </div>
+          <div class="auth-perk-card">
+            <span class="auth-perk-icon">⚡</span>
+            <div>
+              <strong>Fewest Payments (Problem C4)</strong>
+              <p>Greedy bilateral minimization cuts mutual IOUs down to at most k − 1 settlement transfers.</p>
+            </div>
+          </div>
+          <div class="auth-perk-card">
+            <span class="auth-perk-icon">🤖</span>
+            <div>
+              <strong>FairShare AI Assistant</strong>
+              <p>Ask in plain English: "Who owes money for seafood dinner?" with full group context.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Polished Dedicated Auth Card -->
+      <div class="auth-card-panel">
+        <div class="auth-card">
+          <!-- Segmented Pill Toggle Switcher -->
+          <div class="auth-mode-switch" role="tablist">
+            <button type="button" id="tab-login" class="auth-tab-pill active" role="tab" aria-selected="true">
+              Log in
+            </button>
+            <button type="button" id="tab-register" class="auth-tab-pill" role="tab" aria-selected="false">
+              Sign up
+            </button>
+          </div>
+
+          <div id="auth-error-box" class="form-error auth-alert" hidden></div>
+          <div id="auth-success-box" class="auth-success-box auth-alert" hidden></div>
+
+          <!-- Log In Form -->
+          <form id="auth-login-form" class="auth-form-card">
+            <div class="field">
+              <label for="login-identifier">Email or @Username</label>
+              <input type="text" id="login-identifier" placeholder="e.g. alex@example.com or alex4821" autocomplete="username" required>
+              <span id="err-login-identifier" class="field-error" hidden></span>
+            </div>
+            <div class="field">
+              <div class="field-label-row">
+                <label for="login-password">Password</label>
+                <button type="button" id="toggle-login-pass-btn" class="toggle-pass-btn" aria-label="Toggle password visibility">👁 Show</button>
+              </div>
+              <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" required>
+              <span id="err-login-password" class="field-error" hidden></span>
+            </div>
+            <button type="submit" id="auth-login-submit-btn" class="button primary auth-submit-btn">
+              Log in ➔
+            </button>
+          </form>
+
+          <!-- Sign Up Form -->
+          <form id="auth-register-form" class="auth-form-card" style="display:none;">
+            <div class="field">
+              <label for="reg-name">Full Name <span class="req-star">*</span></label>
+              <input type="text" id="reg-name" placeholder="e.g. Alex Rivera" maxlength="80" autocomplete="name" required>
+              <span id="err-reg-name" class="field-error" hidden></span>
+            </div>
+            <div class="field">
+              <label for="reg-username">Username <span class="req-star">*</span></label>
+              <div class="input-with-status">
+                <span class="input-prefix">@</span>
+                <input type="text" id="reg-username" placeholder="alex_rivera" maxlength="30" autocomplete="username" spellcheck="false" required>
+                <span id="reg-username-status" class="username-status-indicator" hidden></span>
+              </div>
+              <span id="err-reg-username" class="field-error" hidden></span>
+              <small id="reg-username-hint" class="field-hint">3–30 characters (letters, numbers, underscores). Checked in real time.</small>
+            </div>
+            <div class="field">
+              <label for="reg-email">Email address <span class="req-star">*</span></label>
+              <input type="email" id="reg-email" placeholder="e.g. alex@example.com" maxlength="120" autocomplete="email" required>
+              <span id="err-reg-email" class="field-error" hidden></span>
+            </div>
+            <div class="field">
+              <div class="field-label-row">
+                <label for="reg-password">Password <span class="req-star">*</span></label>
+                <button type="button" id="toggle-reg-pass-btn" class="toggle-pass-btn" aria-label="Toggle password visibility">👁 Show</button>
+              </div>
+              <input type="password" id="reg-password" placeholder="At least 8 chars with 1 letter & 1 digit" autocomplete="new-password" required>
+              <span id="err-reg-password" class="field-error" hidden></span>
+            </div>
+            <button type="submit" id="auth-register-submit-btn" class="button primary auth-submit-btn">
+              Create account ➔
+            </button>
+          </form>
+
+          <!-- C4 Guest Escape Hatch & Intro Replay -->
+          <div class="auth-card-footer">
+            <a href="/dashboard" id="auth-guest-btn" class="auth-guest-link">
+              Continue without signing in →
+            </a>
+            <a href="/" id="auth-replay-intro-btn" class="auth-replay-link">
+              ↺ Back to Trip Landing Page
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast" hidden></div>
+
+  <!-- Modular Auth Page JavaScript -->
+  <script type="module" src="/js/authPage.js?v=25"></script>
+</body>
+</html>
